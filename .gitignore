@@ -1,7 +1,7 @@
 venv.dir/
 venv
-*.do
 .do_built.dir/
 *.did
 build/
 **/__pycache__/*
+*.vcd
