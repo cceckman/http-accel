@@ -1,0 +1,2 @@
+amaranth[builtin-yosys] >= 0.5
+git+https://github.com/amaranth-lang/amaranth-boards@9d97c4816288c9c2cc304d9280c2c63178d50d2f
