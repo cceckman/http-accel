@@ -38,5 +38,6 @@ sim.add_testbench(bench)
 # Doesn't appear to be a way to _remove_ a testbench;
 # I guess .reset() is "just" to allow a different initial state?
 if __name__ == "__main__":
-    with sim.write_vcd("up_counter.vcd"):
+    import sys
+    with sim.write_vcd(sys.stdout):
         sim.run()
