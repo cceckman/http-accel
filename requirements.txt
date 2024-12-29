@@ -1,3 +1,9 @@
-amaranth[builtin-yosys] >= 0.5
-git+https://github.com/amaranth-lang/amaranth-boards@9d97c4816288c9c2cc304d9280c2c63178d50d2f
-git+https://github.com/amaranth-lang/amaranth-soc@5c43cf58f15d9cd9c69ff83c97997708d386b2dc
+amaranth[builtin-yosys] ~= 0.4.0
+
+# Requires amaranth=0.4
+git+https://github.com/greatscottgadgets/luna.git@0.1.3
+
+# Last support for amaranth=0.4
+git+https://github.com/amaranth-lang/amaranth-boards@d2caa61a1ceb851da8e4e1109fddc56dc29e05ec
+
+
