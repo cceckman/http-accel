@@ -9,7 +9,7 @@ import os
 from dataclasses import dataclass
 
 from amaranth import (
-    Elaboratable, Module, ClockDomain, Signal, DomainRenamer,
+    Module, ClockDomain, Signal, DomainRenamer,
     ClockSignal
 )
 from amaranth.lib.wiring import Component, Out
@@ -17,7 +17,7 @@ from amaranth.lib.wiring import Component, Out
 
 #   from luna.gateware.platform import NullPin, LUNAPlatform
 #   from luna.gateware.usb.usb2.device import USBDevice
-#   from luna.gateware.interface.gateware_phy import GatewarePHY
+from luna.gateware.interface.gateware_phy import GatewarePHY
 from amaranth_boards.fomu_pvt import FomuPVTPlatform
 
 
@@ -77,20 +77,20 @@ class USBDeviceExample(Component):
         # and wiring directly to I/O:
         # https://luna.readthedocs.io/en/latest/custom_hardware.html#full-speed-using-fpga-i-o
 
-        #   phy_pins = platform.request("usb")
+        phy_pins = platform.request("usb")
 
-        #   # TODO:  This isn't the right way -- something like "view" may be?
-        #   # But I can't figure out how to do it, and this is duck-type-safe.
-        #   @dataclass
-        #   class USBPhy:
-        #       d_p: any
-        #       d_n: any
-        #       pullup: any
+        # TODO:  This isn't the right way -- something like "view" may be?
+        # But I can't figure out how to do it, and this is duck-type-safe.
+        @dataclass
+        class USBPhy:
+            d_p: any
+            d_n: any
+            pullup: any
 
-        #   phy_pins = USBPhy(d_p=phy_pins.d_p, d_n=phy_pins.d_n,
-        #                     pullup=phy_pins.pullup)
-        #   phy = GatewarePHY(io=phy_pins)
-        #   m.submodules.phy = phy = DomainRenamer({"usb_io": "sync"})(phy)
+        phy_pins = USBPhy(d_p=phy_pins.d_p, d_n=phy_pins.d_n,
+                          pullup=phy_pins.pullup)
+        phy = GatewarePHY(io=phy_pins)
+        m.submodules.phy = phy = DomainRenamer({"usb_io": "sync"})(phy)
 
         # We need a 12MHz clock too.
         # Based on Luna: gateware/interface/pipe.py
@@ -100,10 +100,10 @@ class USBDeviceExample(Component):
         m.d.comb += usb.clk.eq(decimator == 3)
         m.d.sync += decimator.eq(decimator + 1)
         m.d.comb += self.usb_clk.eq(usb.clk)
-        m.d.comb += self.usb_io_clk.eq(ClockSignal("clk48"))
+        m.d.comb += self.usb_io_clk.eq(ClockSignal("sync"))
 
         # Create our USB device interface...
-        #   m.submodules.usb = usb = USBDevice(bus=phy)
+        # m.submodules.usb = usb = USBDevice(bus=phy)
 
         # Add our standard control endpoint to the device.
         #   descriptors = self.create_descriptors()
@@ -129,4 +129,5 @@ class USBDeviceExample(Component):
 
 
 if __name__ == "__main__":
-    FomuPVTPlatform().build(USBDeviceExample(), do_program=True)
+    FomuPVTPlatform().build(
+        USBDeviceExample(), do_program=True, debug_verilog=True)

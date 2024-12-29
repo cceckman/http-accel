@@ -9,14 +9,10 @@ python3 -m venv ./venv.dir
 
 pip3 install --require-virtualenv -r requirements.txt
 
-# Before 0.5, amaranth-soc points directly at Git head.
-# To install with 0.4, we have to use --ignore-conflicts.
-# Last version before 0.5 upgrade...
-# but that's because it points directly at git.
-# We want to keep 0.4, so --no-dependencies (to avoid upgrading).
+# Requires amaranth=0.4; I'll try to hack around it.
 pip3 install \
     --require-virtualenv \
     --no-dependencies \
-    git+https://github.com/amaranth-lang/amaranth-soc@e1b842800533f44924f21c3867bc2290084d100f
+    git+https://github.com/greatscottgadgets/luna.git@0.1.3
 
 ls venv.dir/ >"$3"
