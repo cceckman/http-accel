@@ -23,3 +23,7 @@ It looks like after the DFU sequence, we get:
 After this, if I try to open the device, I get a I/O error and the device falls off the bus.
 I guess there's nothing to unsuspend the device?
 Or maybe I should try unsuspending manually and then opening it.
+
+---
+
+Yes, disabling the power-save with tlp(8) works to get hello_world working. Yay!
