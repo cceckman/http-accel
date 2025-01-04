@@ -1,6 +1,4 @@
-import sys
 import pdb
-import os
 import pathlib
 
 import amaranth as am
@@ -15,12 +13,17 @@ class FomuUSBUART(am.Elaboratable):
     def elaborate(self, platform):
         m = am.Module()
 
-        uart_data = am.Signal(8)
-        uart_ready = am.Signal()
-        uart_valid = am.Signal()
+        # Use a 12MHz clock as the default: 48MHz / (2^div)
+        #   platform.default_clk = "SB_HFOSC"
+        #   platform.hfosc_div = 2
 
-        # Bind directly to the external ports, so we can pass through to the instance.
-        # The metadata here are, it seems, required.
+        clk48 = am.ClockDomain("clk48", local=True)
+        clk48.clk = platform.request("clk48", dir="i").i
+        m.domains.clk48 = clk48
+
+        # Get the external pins from the platform.
+        # dir="-" says "give me an IOValue",
+        # which is what we need to pass to an Instance.
         usb = platform.request("usb", dir="-")
         d_p = usb.d_p.io
         d_n = usb.d_n.io
@@ -34,16 +37,14 @@ class FomuUSBUART(am.Elaboratable):
 
         m.submodules.usb_uart = am.Instance(
             "usb_uart",
-            ("i", "clk_48mhz", am.ClockSignal()),
-            ("i", "reset", am.ResetSignal()),
+            ("i", "clk_48mhz", am.ClockSignal("clk48")),
+            ("i", "reset", am.ResetSignal("clk48")),
             ("io", "pin_usb_p", d_p),
             ("io", "pin_usb_n", d_n),
-            ("i", "uart_in_data", uart_data),
-            ("i", "uart_in_valid", uart_valid),
-            ("o", "uart_in_ready", uart_ready),
+            ("i", "uart_in_data", am.Const(0x21)),  # !
+            ("i", "uart_in_valid", am.Const(0)),
+            ("i", "uart_out_ready", am.Const(0)),
         )
-        m.d.comb += uart_data.eq(0x21)  # !
-        m.d.sync += uart_valid.eq(uart_valid)
 
         return m
 
@@ -51,8 +52,10 @@ class FomuUSBUART(am.Elaboratable):
 def debughook(etype, value, tb):
     pdb.pm()
 
+# import sys
 # sys.excepthook = debughook
 
 
 if __name__ == "__main__":
-    FomuPVTPlatform().build(FomuUSBUART(), do_program=True)
+    FomuPVTPlatform().build(FomuUSBUART(), do_program=True,
+                            verbose=True, debug_verilog=True)
