@@ -4,10 +4,13 @@ Try:
 
 ```
 ./do venv
-. ./venv.dir/bin/activate
-python3 -m amaranth_boards.fomu
+source ./venv.dir/bin/activate
+python usb_serial.py
 ```
 
-to blink the Fomu LED.
+Puts a program on the Fomu that:
+
+- Acts as a USB-serial loopback device -- echos all input
+- Blinks the green LED at 1Hz (so you know it's programmed)
 
 
