@@ -5,7 +5,10 @@ amaranth[builtin-yosys] ~= 0.5
 yowasp-yosys ~= 0.48
 yowasp-nextpnr-ice40 ~= 0.7
 
-# Last support for amaranth=0.4
 git+https://github.com/amaranth-lang/amaranth-boards@9d97c4816288c9c2cc304d9280c2c63178d50d2f
 
 git+https://github.com/amaranth-lang/amaranth-soc@5c43cf58f15d9cd9c69ff83c97997708d386b2dc
+
+# Support for amaranth 0.5
+
+git+https://github.com/greatscottgadgets/luna@1462160ba66302aaae69dca9e54fd71498a8b3ef

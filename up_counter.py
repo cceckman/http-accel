@@ -5,7 +5,8 @@ from amaranth.lib.wiring import In, Out
 
 class UpCounter(wiring.Component):
     """
-    A 16-bit up-counter with a fixed limit.
+    An up-counter with a fixed limit.
+    Automatically uses as many bits as necessary.
 
     Parameters
     ----------
@@ -15,7 +16,8 @@ class UpCounter(wiring.Component):
     Attributes
     ----------
     en : Signal, in
-        The counter is incremented on each cycle where ``en`` is asserted, and otherwise retains its value.
+        The counter is incremented on each cycle where ``en`` is asserted,
+        and otherwise retains its value.
     ovf : Signal, out
         ``ovf`` is asserted when the counter reaches its limit.
     """
@@ -25,7 +27,10 @@ class UpCounter(wiring.Component):
 
     def __init__(self, limit):
         self.limit = limit
-        self.count = Signal(16)
+        # Ensure we have enough space:
+        import math
+        size = math.ceil(math.log2(limit))
+        self.count = Signal(size)
 
         super().__init__()
 

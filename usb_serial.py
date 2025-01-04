@@ -1,9 +1,13 @@
+import sys
 import pdb
-import pathlib
 
 import amaranth as am
 from amaranth_boards.fomu_pvt import FomuPVTPlatform
-# from amaranth_soc import wishbone
+from luna.gateware.interface.gateware_phy import GatewarePHY
+from luna.gateware.usb.usb2.device import USBDevice
+from usb_protocol.emitters import DeviceDescriptorCollection
+from up_counter import UpCounter
+from luna.full_devices import USBSerialDevice
 
 __all__ = ["FomuUSBUART"]
 
@@ -14,37 +18,51 @@ class FomuUSBUART(am.Elaboratable):
         m = am.Module()
 
         # Use a 12MHz clock as the default: 48MHz / (2^div)
-        #   platform.default_clk = "SB_HFOSC"
-        #   platform.hfosc_div = 2
+        platform.default_clk = "SB_HFOSC"
+        platform.hfosc_div = 2
 
         clk48 = am.ClockDomain("clk48", local=True)
         clk48.clk = platform.request("clk48", dir="i").i
         m.domains.clk48 = clk48
 
+        rename = am.DomainRenamer({"usb_io": "clk48", "usb": "sync"})
+
         # Get the external pins from the platform.
         # dir="-" says "give me an IOValue",
-        # which is what we need to pass to an Instance.
-        usb = platform.request("usb", dir="-")
-        d_p = usb.d_p.io
-        d_n = usb.d_n.io
         # self.d.comb += usb.pullup.o.eq(1)
+        m.submodules.phy = phy = rename(
+            GatewarePHY(io=platform.request("usb")))
 
-        # Ensure all TinyFPGA_BX_USB files are available.
-        tinyfpga_dir = pathlib.Path("tinyfpga_usb")
-        for f in tinyfpga_dir.glob("*.v"):
-            with f.open() as fd:
-                platform.add_file(f.as_posix(), fd)
+        # from luna/examples/usb/acm_serial.py
+        m.submodules.usb_serial = usb_serial = \
+            rename(USBSerialDevice(bus=phy, idVendor=0x1209, idProduct=0x5411))
+        m.d.comb += [
+            # Place the streams into a loopback configuration...
+            usb_serial.tx.payload  .eq(usb_serial.rx.payload),
+            usb_serial.tx.valid    .eq(usb_serial.rx.valid),
+            usb_serial.tx.first    .eq(usb_serial.rx.first),
+            usb_serial.tx.last     .eq(usb_serial.rx.last),
+            usb_serial.rx.ready    .eq(usb_serial.tx.ready),
 
-        m.submodules.usb_uart = am.Instance(
-            "usb_uart",
-            ("i", "clk_48mhz", am.ClockSignal("clk48")),
-            ("i", "reset", am.ResetSignal("clk48")),
-            ("io", "pin_usb_p", d_p),
-            ("io", "pin_usb_n", d_n),
-            ("i", "uart_in_data", am.Const(0x21)),  # !
-            ("i", "uart_in_valid", am.Const(0)),
-            ("i", "uart_out_ready", am.Const(0)),
-        )
+            # ... and always connect by default.
+            usb_serial.connect     .eq(1)
+        ]
+
+        # Show USB activity?
+        leds = platform.request("rgb_led")
+        # m.d.comb += leds.r.o.eq(usb_serial.rx_activity_led)
+        # m.d.comb += leds.b.o.eq(usb_serial.tx_activity_led)
+
+        # Blink the green channel to show liveness:
+        m.submodules.up_counter = up_counter = UpCounter(
+            int(platform.default_clk_frequency) // 2)
+        m.d.comb += up_counter.en.eq(am.Const(1))
+        lit = am.Signal(1)
+        with m.If(up_counter.ovf):
+            m.d.sync += lit.eq(~lit)
+        with m.Else():
+            m.d.sync += lit.eq(lit)
+        m.d.comb += leds.g.o.eq(lit)
 
         return m
 
@@ -52,7 +70,7 @@ class FomuUSBUART(am.Elaboratable):
 def debughook(etype, value, tb):
     pdb.pm()
 
-# import sys
+
 # sys.excepthook = debughook
 
 
