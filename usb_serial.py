@@ -5,7 +5,8 @@ import amaranth as am
 from amaranth_boards.fomu_pvt import FomuPVTPlatform
 from luna.gateware.interface.gateware_phy import GatewarePHY
 from luna.full_devices import USBSerialDevice
-from http_server import HTTP10Server, UpCounter
+from http_server.up_counter import UpCounter
+from http_server.http_server import HTTP10Server
 
 __all__ = ["FomuUSBUART"]
 
@@ -74,6 +75,9 @@ class FomuUSBUART(am.Elaboratable):
             usb_serial.tx.payload.eq(server.output.payload),
             server.output.ready.eq(usb_serial.tx.ready),
         ]
+
+        # And show some additional data in the b channel
+        m.d.comb += leds.b.o.eq(server.output.valid)
 
         return m
 
