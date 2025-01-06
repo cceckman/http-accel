@@ -82,8 +82,6 @@ class HTTP10Server(Component):
         m.submodules.suffix = suffix = Printer(" seconds since startup\r\n")
 
         m.d.comb += [
-            # Valid whenever either output is valid:
-            self.output.valid.eq(number.output.valid | suffix.output.valid),
             # Ready when the output channel is ready:
             number.output.ready.eq(self.output.ready),
             suffix.output.ready.eq(self.output.ready),
@@ -92,30 +90,42 @@ class HTTP10Server(Component):
         # Numeric input from the counter:
         m.d.comb += number.input.eq(second_counter.count)
 
-        # Select output from the valid outputs:
-        with m.If(number.output.valid):
-            m.d.comb += self.output.payload.eq(number.output.payload)
-        with m.Elif(suffix.output.valid):
-            m.d.comb += self.output.payload.eq(suffix.output.payload)
-        with m.Else():
-            m.d.comb += self.output.payload.eq(Const(0))
-
         # And deal with state:
-        m.d.sync += [number.en.eq(Const(0)), suffix.en.eq(Const(0))]
+        m.d.sync += [
+            number.en.eq(Const(0)), suffix.en.eq(Const(0)),
+        ]
+        m.d.comb += [
+            self.output.valid.eq(Const(0)),
+            self.output.payload.eq(Const(0)),
+        ]
         with m.FSM():
             with m.State("idle"):
                 m.next = "idle"
                 with m.If(tick_counter.ovf):
-                    m.d.sync += number.en.eq(Const(1))
+                    m.d.sync += [
+                        number.en.eq(Const(1)),
+                    ]
                     m.next = "number"
+
             with m.State("number"):
                 m.next = "number"
-                with m.If(number.done):
-                    m.d.sync += suffix.en.eq(Const(1))
+                m.d.comb += [
+                    self.output.valid.eq(number.output.valid),
+                    self.output.payload.eq(number.output.payload),
+                ]
+                with m.If(~number.en & number.done):
                     m.next = "suffix"
+                    m.d.sync += [
+                        suffix.en.eq(Const(1)),
+                    ]
             with m.State("suffix"):
                 m.next = "suffix"
-                with m.If(suffix.done):
+                m.d.comb += [
+                    self.output.valid.eq(suffix.output.valid),
+                    self.output.payload.eq(suffix.output.payload),
+                ]
+
+                with m.If(~suffix.en & suffix.done):
                     m.next = "idle"
 
         return m
