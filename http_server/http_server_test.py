@@ -1,7 +1,7 @@
 from amaranth.sim import Simulator
 
 import regex
-from http import HTTP10Server
+from http_server import HTTP10Server
 
 dut = HTTP10Server()
 
@@ -17,7 +17,7 @@ async def bench(ctx):
         await ctx.tick()
 
     r = regex.Regex("[0-9]+ seconds since startup\r\n")
-    # assert r.match(buf), buf
+    assert r.match(buf), buf
 
 
 sim = Simulator(dut)

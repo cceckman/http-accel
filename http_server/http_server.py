@@ -1,9 +1,9 @@
 from amaranth import Const, unsigned, Module
 from amaranth.lib.wiring import In, Out, Component
 from amaranth.lib import stream, wiring
-from .up_counter import UpCounter
-from .number import Number
-from .printer import Printer
+from up_counter import UpCounter
+from number import Number
+from printer import Printer
 
 
 class HTTP10RequestSignature(wiring.Signature):
