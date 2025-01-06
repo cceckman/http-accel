@@ -18,7 +18,7 @@ async def bench_once(ctx):
         if ctx.get(dut.output.valid):
             buf += chr(ctx.get(dut.output.payload))
         else:
-            if len(buf) > 5:
+            if buf.endswith("\r\n"):
                 break
         await ctx.tick()
 
@@ -32,6 +32,7 @@ async def bench_again(ctx):
 
 sim = Simulator(dut)
 sim.add_clock(1e-6)
+sim.add_clock(1e-5, domain="server")
 sim.add_testbench(bench_again)
 
 # Doesn't appear to be a way to _remove_ a testbench;

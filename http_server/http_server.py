@@ -1,6 +1,9 @@
-from amaranth import Const, unsigned, Module
+from amaranth import Const, unsigned, Module, ClockDomain, DomainRenamer
 from amaranth.lib.wiring import In, Out, Component
-from amaranth.lib import stream, wiring
+from amaranth.lib import stream
+from amaranth.lib.cdc import PulseSynchronizer
+from amaranth.lib.fifo import AsyncFIFO
+
 try:
     from up_counter import UpCounter
     from number import Number
@@ -9,40 +12,6 @@ except ImportError:
     from .up_counter import UpCounter
     from .number import Number
     from .printer import Printer
-
-
-class HTTP10RequestSignature(wiring.Signature):
-    """
-    Handshake around an HTTP request.
-
-    HTTP 1.0 is designed to operate over a TCP connection,
-    without streaming: one request per connection.
-    This allows for the simplified assumption that
-    each data stream constitutes a full request;
-    since the data stream is not self-synchronizing, a server
-    must be able to terminate a request early.
-
-    The flow is as follows:
-    - Server asserts ready
-    - Client asserts request (after server asserts ready)
-    - Data transfers through input and output streams
-    - Server deasserts ready when response is complete.
-        (Server may any data received from client.)
-    - Client deasserts request (optionally after flushing its own data)
-    - Serve asserts ready
-
-    request=0,ready=0 is the "mutual reset" condition.
-
-    Attributes
-    ----------
-    ready: Signal(1), output
-        Server is ready to receive a new request / the current request.
-    request: Signal(1), input
-        Client has a request to send.
-    """
-
-    ready: Out(1)
-    request: In(1)
 
 
 class HTTP10Server(Component):
@@ -60,6 +29,7 @@ class HTTP10Server(Component):
 
     input: In(stream.Signature(unsigned(8)))
     output: Out(stream.Signature(unsigned(8)))
+    tick: Out(1)
 
     def elaborate(self, platform):
         m = Module()
@@ -75,39 +45,57 @@ class HTTP10Server(Component):
         if platform and platform.default_clk_frequency:
             freq = round(platform.default_clk_frequency)
 
-        # Stub server: repeats a second count at 1Hz.
+        # Repeats a second count at 1Hz.
         m.submodules.tick_counter = tick_counter = UpCounter(freq)
-        m.submodules.second_counter = second_counter = UpCounter(SECOND_MAX)
+        m.d.comb += [tick_counter.en.eq(Const(1))]
+
+        # Propagate that tick into the "slow" (server) clock domain.
+        m.domains.server = server = ClockDomain("server", local=True)
+        # m.domains.server = m.domains.sync.rename("server")
+        in_server = DomainRenamer({"sync": "server"})
+        # TODO: The constraint doesn't seem to be taking effect?
+        # This says "run at 1GHz" but that doesn't happen.
+        try:
+            platform.add_clock_constraint(server.clk, 1e9)
+        except AttributeError:
+            # Can't set the clock constraint, e.g. on the simulator
+            pass
+        m.submodules.tick = tick = PulseSynchronizer(
+            i_domain="sync", o_domain="server")
+
         m.d.comb += [
-            tick_counter.en.eq(Const(1)),
-            second_counter.en.eq(tick_counter.ovf)
+            tick.i.eq(tick_counter.ovf),
+            self.tick.eq(tick_counter.ovf),
         ]
 
-        m.submodules.number = number = Number(SECOND_WIDTH)
-        m.submodules.suffix = suffix = Printer(" seconds since startup\r\n")
+        # In the server domain, run a counter of elapsed seconds.
+        m.submodules.second_counter = second_counter = in_server(
+            UpCounter(SECOND_MAX))
+        m.d.comb += [second_counter.en.eq(tick.o), ]
+
+        m.submodules.number = number = in_server(Number(SECOND_WIDTH))
+        m.submodules.suffix = suffix = in_server(
+            Printer(" seconds since startup\r\n"))
+
+        # All output goes through a FIFO for reclocking.
+        m.submodules.output_fifo = output_fifo = AsyncFIFO(
+            w_domain="server", r_domain="sync", width=8, depth=4)
 
         m.d.comb += [
-            # Ready when the output channel is ready:
-            number.output.ready.eq(self.output.ready),
-            suffix.output.ready.eq(self.output.ready),
+            # Ready when the FIFO has space:
+            number.output.ready.eq(output_fifo.w_rdy),
+            suffix.output.ready.eq(output_fifo.w_rdy),
+            output_fifo.w_en.eq(Const(0)),
+            output_fifo.w_data.eq(Const(0)),
         ]
 
-        # Numeric input from the counter:
-        m.d.comb += number.input.eq(second_counter.count)
-
-        # And deal with state:
-        m.d.sync += [
-            number.en.eq(Const(0)), suffix.en.eq(Const(0)),
-        ]
-        m.d.comb += [
-            self.output.valid.eq(Const(0)),
-            self.output.payload.eq(Const(0)),
-        ]
-        with m.FSM():
+        # Print the appropriate section of the message:
+        m.d.server += [number.en.eq(Const(0)), suffix.en.eq(Const(0))]
+        with m.FSM(domain="server"):
             with m.State("idle"):
                 m.next = "idle"
                 with m.If(tick_counter.ovf):
-                    m.d.sync += [
+                    m.d.server += [
                         number.en.eq(Const(1)),
                     ]
                     m.next = "number"
@@ -115,22 +103,29 @@ class HTTP10Server(Component):
             with m.State("number"):
                 m.next = "number"
                 m.d.comb += [
-                    self.output.valid.eq(number.output.valid),
-                    self.output.payload.eq(number.output.payload),
+                    output_fifo.w_en.eq(number.output.valid),
+                    output_fifo.w_data.eq(number.output.payload),
                 ]
                 with m.If(~number.en & number.done):
                     m.next = "suffix"
-                    m.d.sync += [
+                    m.d.server += [
                         suffix.en.eq(Const(1)),
                     ]
             with m.State("suffix"):
                 m.next = "suffix"
                 m.d.comb += [
-                    self.output.valid.eq(suffix.output.valid),
-                    self.output.payload.eq(suffix.output.payload),
+                    output_fifo.w_en.eq(suffix.output.valid),
+                    output_fifo.w_data.eq(suffix.output.payload),
                 ]
 
                 with m.If(~suffix.en & suffix.done):
                     m.next = "idle"
+
+        # If the output is ready,
+        m.d.comb += output_fifo.r_en.eq(self.output.ready)
+        # On the next cycle, that data is available:
+        m.d.sync += self.output.payload.eq(output_fifo.r_data)
+        # And we can mark it availabe:
+        m.d.sync += self.output.valid.eq(self.output.ready & output_fifo.r_rdy)
 
         return m
