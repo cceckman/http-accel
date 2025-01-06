@@ -1,4 +1,4 @@
-from amaranth import Module, Signal, unsigned, Array, Const
+from amaranth import Module, Signal, unsigned, Array, Const, Assert
 from amaranth.lib.wiring import In, Out, Component
 from amaranth.lib import stream
 
@@ -35,31 +35,36 @@ class Printer(Component):
 
         # How many states we need:
         # one for each character ("current printable")
-        # plus a "reset" and a "terminal"
         import math
-        size = math.ceil(math.log2(len(self._message) + 2))
+        size = math.ceil(math.log2(len(self._message)))
         count = Signal(size)
 
-        m.d.comb += self.done.eq(count == 0)
         m.d.sync += self.output.valid.eq(0)
         m.d.sync += self.output.payload.eq(0)
 
-        with m.If((count == 0) & self.en):
-            # Start writing.
-            m.d.sync += count.eq(count + 1)
-        with m.Elif(count == Const(len(self._message) + 1)):
-            # We've written all the characters; reset.
-            # TODO: This spends an extra cycle resetting.
-            # I'm letting it slide; we could do an additional comparison
-            # in the below Else block instead to save one cycle.
-            m.d.sync += count.eq(0)
-        with m.Else():
-            m.d.sync += self.output.payload.eq(self._message[count - 1]),
-            # Try to write this character.
-            with m.If(self.output.ready):
+        with m.FSM():
+            with m.State("idle"):
+                m.d.sync += self.done.eq(Const(1))
+                m.next = "idle"
+                m.d.sync += Assert(count == 0)
+                with m.If(self.en):
+                    m.d.sync += self.done.eq(Const(0))
+                    m.next = "running"
+            with m.State("running"):
+                m.d.sync += self.done.eq(Const(0))
+                m.next = "running"
                 m.d.sync += [
-                    self.output.valid.eq(1),
-                    count.eq(count + 1)
+                    self.output.payload.eq(self._message[count]),
+                    self.output.valid.eq(Const(1)),
                 ]
+                with m.If(self.output.ready):
+                    # Ready to advance to the next state.
+                    with m.If(count == len(self._message) - 1):
+                        # At the end of the message; return to idle.
+                        m.d.sync += count.eq(Const(0))
+                        m.next = "idle"
+                    with m.Else():
+                        # Continue printing the message.
+                        m.d.sync += count.eq(count + 1)
 
         return m

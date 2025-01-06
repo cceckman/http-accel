@@ -1,4 +1,4 @@
-from amaranth import Module, Signal
+from amaranth import Module
 from amaranth.lib import wiring
 from amaranth.lib.wiring import In, Out
 
@@ -15,24 +15,28 @@ class UpCounter(wiring.Component):
 
     Attributes
     ----------
-    en : Signal, in
-        The counter is incremented on each cycle where ``en`` is asserted,
-        and otherwise retains its value.
-    ovf : Signal, out
-        ``ovf`` is asserted when the counter reaches its limit.
+    en :    Signal, in
+            The counter is incremented on each cycle where ``en`` is asserted,
+            and otherwise retains its value.
+    ovf:    Signal, out
+            ``ovf`` is asserted when the counter reaches its limit.
+    count:  Signal(...), out
+            The current count.count.
+
     """
 
-    en: In(1)
-    ovf: Out(1)
-
     def __init__(self, limit):
-        self.limit = limit
         # Ensure we have enough space:
         import math
         size = math.ceil(math.log2(limit))
-        self.count = Signal(size)
 
-        super().__init__()
+        super().__init__({
+            "en": In(1),
+            "ovf": Out(1),
+            "count": Out(size),
+        })
+
+        self.limit = limit
 
     def elaborate(self, platform):
         m = Module()

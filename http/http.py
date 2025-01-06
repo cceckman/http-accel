@@ -1,7 +1,9 @@
-import amaranth as am
+from amaranth import Const, unsigned, Module
 from amaranth.lib.wiring import In, Out, Component
 from amaranth.lib import stream, wiring
-from capitalizer import Capitalizer
+from up_counter import UpCounter
+from number import Number
+from printer import Printer
 
 
 class HTTP10RequestSignature(wiring.Signature):
@@ -44,9 +46,6 @@ class HTTP10Server(Component):
 
     Attributes
     ----------
-    request: HTTP10Request
-        State of the HTTP session.
-
     input: Stream(8), input
         Input data stream, from the client to the server.
     output: Stream(8), output
@@ -54,38 +53,69 @@ class HTTP10Server(Component):
 
     """
 
-    request: Out(HTTP10RequestSignature())
-    input: In(stream.Signature(am.unsigned(8)))
-    output: Out(stream.Signature(am.unsigned(8)))
+    input: In(stream.Signature(unsigned(8)))
+    output: Out(stream.Signature(unsigned(8)))
 
     def elaborate(self, platform):
-        m = am.Module()
-        m.submodules.to_upper = to_upper = Capitalizer(to_upper=True)
-        m.d.comb += to_upper.input.eq(self.input.i.payload)
-        ready = self.request.ready.o
-        request = self.request.request.i
+        m = Module()
 
-        # Major FSM: request state.
-        with m.FSM(name="request"):
-            with m.State("reset"):
-                m.d.comb += ready.eq(am.Const(1))
-                with m.If(request):
-                    m.next = "working"
-                with m.Else():
-                    m.next = "reset"
-            with m.State("working"):
-                m.d.comb += ready.eq(am.Const(1))
-                with m.If(request):
-                    # TODO: Inner FSM here, to actually do the work.
-                    # May result in "closed" or "working".
-                    m.next = "working"
-                with m.Else():
-                    m.next = "closed"
-            with m.State("closed"):
-                m.d.comb += ready.eq(am.Const(0))
-                with m.If(request):
-                    m.next = "closed"
-                with m.Else():
-                    m.next = "reset"
+        # For now, discard all input from the host:
+        m.d.comb += self.input.ready.eq(Const(1))
+
+        SECOND_MAX = 2 ** 20
+        import math
+        SECOND_WIDTH = math.ceil(math.log2(SECOND_MAX))
+
+        freq = 10
+        if platform and platform.default_clk_frequency:
+            freq = platform.default_clk_frequency
+
+        # Stub server: repeats a second count at 1Hz.
+        m.submodules.tick_counter = tick_counter = UpCounter(freq)
+        m.submodules.second_counter = second_counter = UpCounter(SECOND_MAX)
+        m.d.comb += [
+            tick_counter.en.eq(Const(1)),
+            second_counter.en.eq(tick_counter.ovf)
+        ]
+
+        m.submodules.number = number = Number(SECOND_WIDTH)
+        m.submodules.suffix = suffix = Printer(" seconds since startup\r\n")
+
+        m.d.comb += [
+            # Valid whenever either output is valid:
+            self.output.valid.eq(number.output.valid | suffix.output.valid),
+            # Ready when the output channel is ready:
+            number.output.ready.eq(self.output.ready),
+            suffix.output.ready.eq(self.output.ready),
+        ]
+
+        # Numeric input from the counter:
+        m.d.comb += number.input.eq(second_counter.count)
+
+        # Select output from the valid outputs:
+        with m.If(number.output.valid):
+            m.d.comb += self.output.payload.eq(number.output.payload)
+        with m.Elif(suffix.output.valid):
+            m.d.comb += self.output.payload.eq(suffix.output.payload)
+        with m.Else():
+            m.d.comb += self.output.payload.eq(Const(0))
+
+        # And deal with state:
+        m.d.sync += [number.en.eq(Const(0)), suffix.en.eq(Const(0))]
+        with m.FSM():
+            with m.State("idle"):
+                m.next = "idle"
+                with m.If(tick_counter.ovf):
+                    m.d.sync += number.en.eq(Const(1))
+                    m.next = "number"
+            with m.State("number"):
+                m.next = "number"
+                with m.If(number.done):
+                    m.d.sync += suffix.en.eq(Const(1))
+                    m.next = "suffix"
+            with m.State("suffix"):
+                m.next = "suffix"
+                with m.If(suffix.done):
+                    m.next = "idle"
 
         return m

@@ -12,3 +12,5 @@ git+https://github.com/amaranth-lang/amaranth-soc@5c43cf58f15d9cd9c69ff83c979977
 # Support for amaranth 0.5
 
 git+https://github.com/greatscottgadgets/luna@1462160ba66302aaae69dca9e54fd71498a8b3ef
+
+regex
