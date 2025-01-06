@@ -4,13 +4,8 @@ import pdb
 import amaranth as am
 from amaranth_boards.fomu_pvt import FomuPVTPlatform
 from luna.gateware.interface.gateware_phy import GatewarePHY
-from luna.gateware.usb.usb2.device import USBDevice
-from usb_protocol.emitters import DeviceDescriptorCollection
-from up_counter import UpCounter
 from luna.full_devices import USBSerialDevice
-
-from http.number import Number
-from http.
+from http_server import HTTP10Server, UpCounter
 
 __all__ = ["FomuUSBUART"]
 
@@ -41,11 +36,11 @@ class FomuUSBUART(am.Elaboratable):
             rename(USBSerialDevice(bus=phy, idVendor=0x1209, idProduct=0x5411))
         m.d.comb += [
             # Place the streams into a loopback configuration...
-            usb_serial.tx.payload  .eq(usb_serial.rx.payload),
-            usb_serial.tx.valid    .eq(usb_serial.rx.valid),
-            usb_serial.tx.first    .eq(usb_serial.rx.first),
-            usb_serial.tx.last     .eq(usb_serial.rx.last),
-            usb_serial.rx.ready    .eq(usb_serial.tx.ready),
+            # usb_serial.tx.payload  .eq(usb_serial.rx.payload),
+            # usb_serial.tx.valid    .eq(usb_serial.rx.valid),
+            # usb_serial.tx.first    .eq(usb_serial.rx.first),
+            # usb_serial.tx.last     .eq(usb_serial.rx.last),
+            # usb_serial.rx.ready    .eq(usb_serial.tx.ready),
 
             # ... and always connect by default.
             usb_serial.connect     .eq(1)
@@ -53,8 +48,6 @@ class FomuUSBUART(am.Elaboratable):
 
         # Show USB activity?
         leds = platform.request("rgb_led")
-        # m.d.comb += leds.r.o.eq(usb_serial.rx_activity_led)
-        # m.d.comb += leds.b.o.eq(usb_serial.tx_activity_led)
 
         # Blink the green channel to show liveness:
         m.submodules.up_counter = up_counter = UpCounter(
@@ -66,6 +59,21 @@ class FomuUSBUART(am.Elaboratable):
         with m.Else():
             m.d.sync += lit.eq(lit)
         m.d.comb += leds.g.o.eq(lit)
+
+        # Connect the HTTP server.
+        # Looks like Luna doesn't yet use wiring,
+        # so we'll have to connect() manually
+        m.submodules.server = server = HTTP10Server()
+        m.d.comb += [
+            server.input.valid.eq(usb_serial.rx.valid),
+            server.input.payload.eq(usb_serial.rx.payload),
+            usb_serial.rx.ready.eq(server.input.ready),
+        ]
+        m.d.comb += [
+            usb_serial.tx.valid.eq(server.output.valid),
+            usb_serial.tx.payload.eq(server.output.payload),
+            server.output.ready.eq(usb_serial.tx.ready),
+        ]
 
         return m
 

@@ -1,9 +1,9 @@
 from amaranth import Const, unsigned, Module
 from amaranth.lib.wiring import In, Out, Component
 from amaranth.lib import stream, wiring
-from up_counter import UpCounter
-from number import Number
-from printer import Printer
+from .up_counter import UpCounter
+from .number import Number
+from .printer import Printer
 
 
 class HTTP10RequestSignature(wiring.Signature):
@@ -68,7 +68,7 @@ class HTTP10Server(Component):
 
         freq = 10
         if platform and platform.default_clk_frequency:
-            freq = platform.default_clk_frequency
+            freq = round(platform.default_clk_frequency)
 
         # Stub server: repeats a second count at 1Hz.
         m.submodules.tick_counter = tick_counter = UpCounter(freq)
