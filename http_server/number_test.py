@@ -1,3 +1,5 @@
+import random
+
 from amaranth.sim import Simulator
 
 from number import Number
@@ -9,7 +11,10 @@ async def bench(ctx):
     await run_test(ctx, 0)
     await run_test(ctx, 3)
     await run_test(ctx, 0xffff)
-    await run_test(ctx, 99)
+
+    # Randomized test:
+    for _ in range(20):
+        await run_test_backpressure(ctx, 1234)
 
 
 async def run_test(ctx, i):
@@ -34,6 +39,37 @@ async def run_test(ctx, i):
         await ctx.tick()
 
     assert ctx.get(dut.done)
+    assert not ctx.get(dut.output.valid)
+    want = str(i)
+    assert buf == want, (buf, want)
+
+
+async def run_test_backpressure(ctx, i):
+    assert ctx.get(dut.done)
+    assert ctx.get(dut.output.valid) == 0
+
+    # Not yet enabled:
+    await ctx.tick()
+    assert ctx.get(dut.done)
+    assert ctx.get(dut.output.valid) == 0
+
+    buf = ""
+    ctx.set(dut.input, i)
+    ctx.set(dut.en, 1)
+    while True:
+        if ctx.get(dut.output.valid) and ctx.get(dut.output.ready):
+            # A byte will be transferred this cycle.
+            # A byte was transferred.
+            got = ctx.get(dut.output.payload)
+            buf += chr(got)
+
+        await ctx.tick()
+        ctx.set(dut.en, 0)
+        ctx.set(dut.output.ready, random.randint(0, 1))
+
+        if ctx.get(dut.done):
+            break
+
     assert not ctx.get(dut.output.valid)
     want = str(i)
     assert buf == want, (buf, want)

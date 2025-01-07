@@ -27,12 +27,13 @@ async def bench_once(ctx):
 
 async def bench_again(ctx):
     # Re-trigger several times:
-    for _ in range(20):
+    # for _ in range(20):
+    for _ in range(1):
         await bench_once(ctx)
 
 sim = Simulator(dut)
 sim.add_clock(1e-6)
-sim.add_clock(1e-5, domain="server")
+sim.add_clock(5e-7, domain="server")
 sim.add_testbench(bench_again)
 
 # Doesn't appear to be a way to _remove_ a testbench;

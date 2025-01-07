@@ -53,18 +53,19 @@ class HTTP10Server(Component):
         m.domains.server = server = ClockDomain("server", local=True)
         # m.domains.server = m.domains.sync.rename("server")
         in_server = DomainRenamer({"sync": "server"})
-        # TODO: The constraint doesn't seem to be taking effect?
-        # This says "run at 1GHz" but that doesn't happen.
         # It looks like a clock domain doesn't get driven
         # unless you tell it to be?
         # You can't just say "make this some frequency that meets timings?"
         # Or maybe you can, but I'm not seeing the API for it.
+        # This runs the clock specifically at half the USB clock.
         m.d.sync += server.clk.eq(~server.clk)
-        try:
-            platform.add_clock_constraint(server.clk, 1e9)
-        except AttributeError:
-            # Can't set the clock constraint, e.g. on the simulator
-            pass
+        # In any case, I can indeed specify the clock constraint here --
+        # or let it free and just take whatever.
+        # try:
+        #     platform.add_clock_constraint(server.clk, 1e9)
+        # except AttributeError:
+        #     # Can't set the clock constraint, e.g. on the simulator
+        #     pass
         m.submodules.tick = tick = PulseSynchronizer(
             i_domain="sync", o_domain="server")
 
