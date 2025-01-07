@@ -39,25 +39,30 @@ class Printer(Component):
         size = math.ceil(math.log2(len(self._message)))
         count = Signal(size)
 
-        m.d.sync += self.output.valid.eq(0)
-        m.d.sync += self.output.payload.eq(0)
+        m.d.comb += [
+            self.output.valid.eq(0),
+            self.output.payload.eq(self._message[count]),
+
+        ]
 
         with m.FSM():
             with m.State("idle"):
-                m.d.sync += self.done.eq(Const(1))
+                m.d.comb += self.done.eq(Const(1))
                 m.next = "idle"
                 m.d.sync += Assert(count == 0)
                 with m.If(self.en):
-                    m.d.sync += self.done.eq(Const(0))
+                    m.d.comb += self.done.eq(Const(0))
                     m.next = "running"
             with m.State("running"):
-                m.d.sync += self.done.eq(Const(0))
-                m.next = "running"
-                m.d.sync += [
-                    self.output.payload.eq(self._message[count]),
+                m.d.comb += [
+                    self.done.eq(Const(0)),
                     self.output.valid.eq(Const(1)),
                 ]
+                m.next = "running"
                 with m.If(self.output.ready):
+                    # At the next clock cycle,
+                    # either reset and become "done"
+                    # or print a character.
                     # Ready to advance to the next state.
                     with m.If(count == len(self._message) - 1):
                         # At the end of the message; return to idle.
