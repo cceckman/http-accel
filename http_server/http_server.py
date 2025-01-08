@@ -2,7 +2,7 @@ from amaranth import Const, unsigned, Module, ClockDomain, DomainRenamer, Assert
 from amaranth.lib.wiring import In, Out, Component
 from amaranth.lib import stream
 from amaranth.lib.cdc import PulseSynchronizer
-from amaranth.lib.fifo import AsyncFIFO
+from amaranth.lib.fifo import AsyncFIFO, SyncFIFOBuffered
 
 try:
     from up_counter import UpCounter
@@ -49,50 +49,18 @@ class HTTP10Server(Component):
         m.submodules.tick_counter = tick_counter = UpCounter(freq)
         m.d.comb += [tick_counter.en.eq(Const(1))]
 
-        # Propagate that tick into the "slow" (server) clock domain.
-        # m.domains.server = server = ClockDomain("server", local=True)
-        # m.domains.server = m.domains.sync.rename("server")
-        # in_server = DomainRenamer({"sync": "server"})
-        # It looks like a clock domain doesn't get driven
-        # unless you tell it to be?
-        # You can't just say "make this some frequency that meets timings?"
-        # Or maybe you can, but I'm not seeing the API for it.
-        # This runs the clock specifically at half the USB clock.
-        # m.d.sync += server.clk.eq(~server.clk)
-        # In any case, I can indeed specify the clock constraint here --
-        # or let it free and just take whatever.
-        # try:
-        #     platform.add_clock_constraint(server.clk, 1e9)
-        # except AttributeError:
-        #     # Can't set the clock constraint, e.g. on the simulator
-        #     pass
-        # m.submodules.tick = tick = PulseSynchronizer(
-        #     i_domain="sync", o_domain="server")
-
-        # m.d.comb += [
-        #     tick.i.eq(tick_counter.ovf),
-        #     self.tick.eq(tick_counter.ovf),
-        # ]
-        def in_server(x): return x
-
         # In the server domain, run a counter of elapsed seconds.
-        m.submodules.second_counter = second_counter = in_server(
-            UpCounter(SECOND_MAX))
+        m.submodules.second_counter = second_counter = UpCounter(SECOND_MAX)
         # TODO: Sync or comb? Doesn't really matter;
         # sync "just" introduces a cycle of delay
         m.d.sync += [second_counter.en.eq(tick_counter.ovf), ]
 
-        m.submodules.number = number = in_server(Number(SECOND_WIDTH))
-        m.submodules.suffix = suffix = in_server(
-            Printer(" seconds since startup\r\n"))
+        m.submodules.number = number = Number(SECOND_WIDTH)
+        m.submodules.suffix = suffix = Printer(" seconds since startup\r\n")
 
         # All output goes through a FIFO for reclocking.
-        m.submodules.output_fifo = output_fifo = AsyncFIFO(
-            w_domain="sync", r_domain="sync", width=8, depth=4)
-
-        # TODO: I think something is messing up in this module.
-        # Rewrite this state machine?
-        # ...on paper?
+        m.submodules.output_fifo = output_fifo = SyncFIFOBuffered(
+            width=8, depth=4)
 
         # Print the appropriate section of the message:
         m.d.comb += [
@@ -108,7 +76,7 @@ class HTTP10Server(Component):
             Assert(~(number.output.valid & number.done)),
             Assert(~(suffix.output.valid & suffix.done)),
         ]
-        with m.FSM(domain="sync"):
+        with m.FSM():
             with m.State("idle"):
                 m.next = "idle"
                 with m.If(tick_counter.ovf):
@@ -137,7 +105,7 @@ class HTTP10Server(Component):
                 with m.If(suffix.done):
                     m.next = "idle"
 
-        # TODO : Naive version: just wire the output port to the FIFO.
+        # : Naive version: just wire the output port to the FIFO.
         # ...I thought this wouldn't work but apparently it's fine?
         # At least if everything is in the same clock domain.
         m.d.comb += [
