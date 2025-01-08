@@ -6,7 +6,7 @@ from http_server import HTTP10Server
 
 dut = HTTP10Server()
 
-r = regex.Regex("[0-9]+ seconds since startup\r\n")
+r = regex.Regex("^[0-9]+ seconds since startup\r\n")
 
 
 async def bench_once(ctx):
@@ -43,12 +43,16 @@ async def bench_backpressure(ctx):
             break
     assert r.match(buf), buf
 
+    # This comes after bench_once, so we're guaranteed that the second count is >0.
+    number = int(buf.split(' ')[0])
+    assert number > 0
+
 
 async def bench_again(ctx):
-    # await bench_once(ctx)
-    # # Randomized backpressure:
-    # for _ in range(20):
-    await bench_backpressure(ctx)
+    await bench_once(ctx)
+    # Randomized backpressure:
+    for _ in range(20):
+        await bench_backpressure(ctx)
 
 sim = Simulator(dut)
 sim.add_clock(1e-6)

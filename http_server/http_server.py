@@ -64,6 +64,7 @@ class HTTP10Server(Component):
 
         # Print the appropriate section of the message:
         m.d.comb += [
+            number.input.eq(second_counter.count),
             number.output.ready.eq(Const(0)),
             suffix.output.ready.eq(Const(0)),
             output_fifo.w_en.eq(Const(0)),
