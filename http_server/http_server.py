@@ -37,7 +37,7 @@ class HTTP10Server(Component):
         # For now, discard all input from the host:
         m.d.comb += self.input.ready.eq(Const(1))
 
-        SECOND_MAX = 2 ** 20
+        SECOND_MAX = 2 ** 8
         import math
         SECOND_WIDTH = math.ceil(math.log2(SECOND_MAX))
 
