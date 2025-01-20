@@ -76,8 +76,8 @@ class FomuUSBUART(am.Elaboratable):
             server.output.ready.eq(usb_serial.tx.ready),
         ]
 
-        # And show some additional data in the b channel
-        m.d.comb += leds.b.o.eq(server.output.valid)
+        # Show backpressure in the red channel
+        m.d.comb += leds.r.o.eq(~server.output.ready)
 
         return m
 
