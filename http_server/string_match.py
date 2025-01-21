@@ -32,9 +32,10 @@ class StringMatch(Component):
     def __init__(self, message: str, match_case: bool = True, **kwargs):
         super().__init__(**kwargs)
 
-        if match_case:
-            message = message.capitalize()
-        self._message = Array(map(ord, message))
+        cased_message = message
+        if not match_case:
+            cased_message = message.upper()
+        self._message = Array(map(ord, cased_message))
 
         self._match_case = match_case
 
@@ -69,9 +70,8 @@ class StringMatch(Component):
         with m.FSM():
             with m.State("matching"):
                 m.d.comb += self.input.ready.eq(1)
-                self.input.ready.eq(1),
                 m.next = "matching"
-                with m.If(self.input.valid & self.input.ready):
+                with m.If(self.input.valid):
                     # Consume one byte; we're already holding "ready".
                     with m.If(c == self._message[idx]):
                         with m.If(idx < len(self._message) - 1):

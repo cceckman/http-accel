@@ -3,7 +3,7 @@ from amaranth.sim import Simulator
 
 from string_match import StringMatch
 
-dut = StringMatch("Hello", match_case=True)
+dut = StringMatch("Hello", match_case=False)
 
 
 async def run_sequence(ctx, input: str):
@@ -53,17 +53,16 @@ async def bench(ctx):
     ctx.set(dut.reset, 0)
     ctx.set(dut.input.valid, 0)
 
-    matches_goodbye = await run_sequence(ctx, "Goodbye")
-    assert not matches_goodbye
+    matches_hello = await run_sequence(ctx, "hello")
+    assert matches_hello
 
     ctx.set(dut.reset, 1)
     await ctx.tick()
     ctx.set(dut.reset, 0)
     ctx.set(dut.input.valid, 0)
 
-    matches_hello_lower = await run_sequence(ctx, "hello")
-    assert not matches_hello_lower
-
+    matches_goodbye = await run_sequence(ctx, "goodbye")
+    assert not matches_goodbye
 
 sim = Simulator(dut)
 sim.add_clock(1e-6)
