@@ -14,7 +14,7 @@ dut = StringSeqMatch(sequence=[
     StringMatch(" "),
     StringAltMatch(alternatives=[
         StringMatch("/style.css"),
-        StringMatch("/"),
+        StringMatch("/index.html"),
     ]),
     StringMatch(" HTTP/1"),
     StringAltMatch(alternatives=[
@@ -48,8 +48,7 @@ async def run_sequence(ctx, input: str):
         if count == input_len:
             break
         assert ctx.get(dut.input.ready)
-        # valid = random.randint(0, 1)
-        valid = 1
+        valid = random.randint(0, 1)
         ctx.set(dut.input.valid, valid)
         if valid:
             # Advance the input on this cycle.
@@ -68,8 +67,8 @@ async def run_sequence(ctx, input: str):
 
 
 async def bench(ctx):
-    # assert await run_sequence(ctx, "GET / HTTP/1\r\n")
-    # assert not await run_sequence(ctx, "DELETE / HTTP/1.0\r\n")
+    assert await run_sequence(ctx, "GET /index.html HTTP/1\r\n")
+    assert not await run_sequence(ctx, "DELETE /index.html HTTP/1.0\r\n")
     await run_sequence(ctx, "POST /style.css HTTP/1.0\r\n")
 
 

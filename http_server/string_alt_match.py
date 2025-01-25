@@ -11,6 +11,9 @@ class StringAltMatch(Component):
     Returns "accepted" once any accepts (shortest-match),
     or returns "rejected" once all reject.
 
+    WARNING: Shortest-match means that prefix matches don't work;
+    "/" | "/style.css" will match "/" without consuming the 's'.
+
     Parameters
     ----------
     alternatives: List[StringMatch]
