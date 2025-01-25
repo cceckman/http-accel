@@ -71,7 +71,7 @@ class StringMatch(Component):
             with m.State("matching"):
                 m.d.comb += self.input.ready.eq(1)
                 m.next = "matching"
-                with m.If(self.input.valid):
+                with m.If(self.input.valid & ~self.reset):
                     # Consume one byte; we're already holding "ready".
                     with m.If(c == self._message[idx]):
                         with m.If(idx < len(self._message) - 1):

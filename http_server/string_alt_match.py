@@ -1,16 +1,14 @@
-from amaranth import Module, Signal, Array
+from amaranth import Module, Signal
 from amaranth.lib.wiring import In, Out, Component
 from amaranth.lib import stream
-from capitalizer import Capitalizer
 
 # TODO: extract "StringMatch" as a signature.
 
 
 class StringAltMatch(Component):
     """
-    Match a number of alternative strings,
-    i.e. acts as a regex | operator.
-    Returns "accepted" once any accepts,
+    Match a number of alternative strings.
+    Returns "accepted" once any accepts (shortest-match),
     or returns "rejected" once all reject.
 
     Parameters
