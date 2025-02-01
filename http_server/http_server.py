@@ -3,6 +3,7 @@ from amaranth.lib.wiring import In, Out, Component
 from amaranth.lib import stream
 from amaranth.lib.cdc import PulseSynchronizer
 from amaranth.lib.fifo import AsyncFIFO, SyncFIFOBuffered
+from .http_match import HttpMatch
 
 try:
     from up_counter import UpCounter
@@ -30,12 +31,19 @@ class HTTP10Server(Component):
     input: In(stream.Signature(unsigned(8)))
     output: Out(stream.Signature(unsigned(8)))
     tick: Out(1)
+    request_match: Out(1)
 
     def elaborate(self, platform):
         m = Module()
 
-        # For now, discard all input from the host:
-        m.d.comb += self.input.ready.eq(Const(1))
+        m.submodules.reqmatch = reqmatch = HttpMatch()
+
+        m.d.comb += [
+            self.input.ready.eq(reqmatch.input.ready),
+            reqmatch.input.payload.eq(self.input.payload),
+            reqmatch.input.valid.eq(self.input.valid),
+            self.request_match.eq(reqmatch.accepted),
+        ]
 
         SECOND_MAX = 2 ** 8
         import math
