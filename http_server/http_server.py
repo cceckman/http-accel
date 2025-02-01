@@ -37,90 +37,38 @@ class HTTP10Server(Component):
         m = Module()
 
         m.submodules.reqmatch = reqmatch = HttpMatch()
+        m.submodules.accepted = accepted = Printer("ok\n")
+        m.submodules.rejected = rejected = Printer("uh oh\n")
+        output = self.output
 
         m.d.comb += [
             self.input.ready.eq(reqmatch.input.ready),
             reqmatch.input.payload.eq(self.input.payload),
             reqmatch.input.valid.eq(self.input.valid),
-            self.request_match.eq(reqmatch.accepted),
         ]
 
-        SECOND_MAX = 2 ** 8
-        import math
-        SECOND_WIDTH = math.ceil(math.log2(SECOND_MAX))
-
-        freq = 10
-        if platform and platform.default_clk_frequency:
-            freq = round(platform.default_clk_frequency)
-
-        # Repeats a second count at 1Hz.
-        m.submodules.tick_counter = tick_counter = UpCounter(freq)
-        m.d.comb += [tick_counter.en.eq(Const(1))]
-
-        # In the server domain, run a counter of elapsed seconds.
-        m.submodules.second_counter = second_counter = UpCounter(SECOND_MAX)
-        # TODO: Sync or comb? Doesn't really matter;
-        # sync "just" introduces a cycle of delay
-        m.d.sync += [second_counter.en.eq(tick_counter.ovf), ]
-
-        m.submodules.number = number = Number(SECOND_WIDTH)
-        m.submodules.suffix = suffix = Printer(" seconds since startup\r\n")
-
-        # All output goes through a FIFO for reclocking.
-        m.submodules.output_fifo = output_fifo = SyncFIFOBuffered(
-            width=8, depth=4)
-
-        # Print the appropriate section of the message:
-        m.d.comb += [
-            number.input.eq(second_counter.count),
-            number.output.ready.eq(Const(0)),
-            suffix.output.ready.eq(Const(0)),
-            output_fifo.w_en.eq(Const(0)),
-            output_fifo.w_data.eq(Const(0)),
-            number.en.eq(Const(0)), suffix.en.eq(Const(0)),
-        ]
-        m.d.sync += [
-            Assert(~(number.output.ready & suffix.output.ready)),
-            Assert(~(number.output.valid & suffix.output.valid)),
-            Assert(~(number.output.valid & number.done)),
-            Assert(~(suffix.output.valid & suffix.done)),
-        ]
         with m.FSM():
             with m.State("idle"):
                 m.next = "idle"
-                with m.If(tick_counter.ovf):
-                    m.d.comb += [number.en.eq(Const(1)), ]
-                    m.next = "number"
+                with m.If(reqmatch.accepted):
+                    m.next = "accepted"
+                with m.If(reqmatch.rejected):
+                    m.next = "rejected"
 
-            with m.State("number"):
-                m.next = "number"
-                # Mux the output FIFO to the number output:
+            with m.State("accepted"):
+                m.next = "idle"
                 m.d.comb += [
-                    output_fifo.w_en.eq(number.output.valid),
-                    output_fifo.w_data.eq(number.output.payload),
-                    number.output.ready.eq(output_fifo.w_rdy),
-                ]
-                with m.If(number.done):
-                    m.next = "suffix"
-                    m.d.comb += [suffix.en.eq(Const(1)), ]
-            with m.State("suffix"):
-                m.next = "suffix"
-                m.d.comb += [
-                    output_fifo.w_en.eq(suffix.output.valid),
-                    output_fifo.w_data.eq(suffix.output.payload),
-                    suffix.output.ready.eq(output_fifo.w_rdy),
+                    output.valid.eq(accepted.output.valid),
+                    output.payload.eq(accepted.output.payload),
+                    accepted.output.ready.eq(output.ready),
                 ]
 
-                with m.If(suffix.done):
-                    m.next = "idle"
-
-        # : Naive version: just wire the output port to the FIFO.
-        # ...I thought this wouldn't work but apparently it's fine?
-        # At least if everything is in the same clock domain.
-        m.d.comb += [
-            output_fifo.r_en.eq(self.output.ready),
-            self.output.payload.eq(output_fifo.r_data),
-            self.output.valid.eq(output_fifo.r_rdy),
-        ]
+            with m.State("rejected"):
+                m.next = "idle"
+                m.d.comb += [
+                    output.valid.eq(rejected.output.valid),
+                    output.payload.eq(rejected.output.payload),
+                    rejected.output.ready.eq(output.ready),
+                ]
 
         return m

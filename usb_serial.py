@@ -50,17 +50,6 @@ class FomuUSBUART(am.Elaboratable):
         # Show USB activity?
         leds = platform.request("rgb_led")
 
-        # Blink the green channel to show liveness:
-        m.submodules.up_counter = up_counter = UpCounter(
-            int(platform.default_clk_frequency) // 2)
-        m.d.comb += up_counter.en.eq(am.Const(1))
-        lit = am.Signal(1)
-        with m.If(up_counter.ovf):
-            m.d.sync += lit.eq(~lit)
-        with m.Else():
-            m.d.sync += lit.eq(lit)
-        m.d.comb += leds.g.o.eq(lit)
-
         # Connect the HTTP server.
         # Looks like Luna doesn't yet use wiring,
         # so we'll have to connect() manually
@@ -75,6 +64,8 @@ class FomuUSBUART(am.Elaboratable):
             usb_serial.tx.payload.eq(server.output.payload),
             server.output.ready.eq(usb_serial.tx.ready),
         ]
+        # Green channel on an accepted HTTP request
+        m.d.comb += leds.g.o.eq(server.request_match)
 
         # Show backpressure in the red channel
         m.d.comb += leds.r.o.eq(~server.output.ready)
