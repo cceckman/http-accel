@@ -3,8 +3,7 @@ Fomu build using the Amaranth toolchain.
 Try:
 
 ```
-./do venv
-source ./venv.dir/bin/activate
+source ./enter.sh
 python usb_serial.py
 ```
 
