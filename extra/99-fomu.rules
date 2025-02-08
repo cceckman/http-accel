@@ -1,0 +1,4 @@
+# The Fomu bootloader:
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1209", ATTRS{idProduct}=="5bf0", MODE="0664", GROUP="plugdev"
+# "Generic OrangeCrab CDC", seems to be the default for the wishbone USB bridge?
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1209", ATTRS{idProduct}=="5411", MODE="0664", GROUP="plugdev"
