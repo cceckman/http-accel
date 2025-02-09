@@ -12,4 +12,5 @@ Puts a program on the Fomu that:
 - Acts as a USB-serial loopback device -- echos all input
 - Blinks the green LED at 1Hz (so you know it's programmed)
 
+Use `extras/99-fomu.rules` to make the devices more accessible (non-root).
 
