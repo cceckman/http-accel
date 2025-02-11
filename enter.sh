@@ -1,5 +1,5 @@
 
-redo-ifchange venv
+./do venv
 source ./venv.dir/bin/activate
 export YOSYS=yowasp-yosys
 export NEXTPNR_ICE40=yowasp-nextpnr-ice40
