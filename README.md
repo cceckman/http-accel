@@ -1,16 +1,18 @@
 Fomu build using the Amaranth toolchain.
 
-Try:
+To set up a Linux machine for easy passthrough:
+
+```shell
+# Allow 'plugdev' to access Fomu USB IDs
+cat extras/99-fomu.rules | sudo tee /etc/udev/rules.d/99-fomu.rules
+# Disable power-saving autosuspend on Fomu IDs
+cat extras/fomu-serial.conf | sudo tee /etc/tlp.d/fomu-serial.conf
+```
+
+Then try:
 
 ```
 source ./enter.sh
 python usb_serial.py
 ```
-
-Puts a program on the Fomu that:
-
-- Acts as a USB-serial loopback device -- echos all input
-- Blinks the green LED at 1Hz (so you know it's programmed)
-
-Use `extras/99-fomu.rules` to make the devices more accessible (non-root).
 
