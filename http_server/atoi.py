@@ -54,7 +54,15 @@ class AtoI(Component):
         m.d.comb += next.eq(am.Mux(self.input.valid, shifted + increment, self.value))
 
         # Error latches, and holds until next reset
-        m.d.sync += self.error.eq(am.Mux(self.reset, 0, self.error | error_comb))
-        m.d.sync += self.value.eq(am.Mux(error_comb | self.reset, 0, next))
+        with m.If(self.reset):
+            m.d.sync += [
+                self.error.eq(0),
+                self.value.eq(0),
+            ]
+        with m.Else():
+            m.d.sync += [
+                self.error.eq(self.error | error_comb),
+                self.value.eq(next),
+            ]
 
         return m
