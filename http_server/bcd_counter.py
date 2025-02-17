@@ -1,6 +1,44 @@
-from amaranth import Module, unsigned 
+from amaranth import Module, Signal, unsigned 
 from amaranth.lib.wiring import In, Out, Component
 from amaranth.lib import stream
+
+class BcdDigit(Component):
+    """
+    A single Binary-Coded Decimal Digit
+
+    The 'ovf' of one digit should be connected to the 'en' of the next digit.
+
+    reset : Signal(1), in. Resets the counter.
+    en    : Signal(1), in
+           The counter is incremented on each cycle where `en` is asserted,
+           otherwise retains its value.
+    ovf   : Signal(1), out
+            `ovf` is asserted when the counter overflows
+    digit : Signal(4), out
+            The current value of the digit.
+    """
+
+    def __init__(self):
+        super().__init__({
+            "reset": In(1),
+            "en": In(1),
+            "ovf": Out(1, init=0),
+            "digit": Out(4, init=0),
+        })
+
+    def elaborate(self, unused_platform):
+        m = Module()
+
+        m.d.comb += self.ovf.eq(self.en & (self.digit == 9))
+
+        with m.If(self.reset):
+            m.d.sync += self.digit.eq(0)
+        with m.Elif(self.en):
+            with m.If(self.ovf):
+                m.d.sync += self.digit.eq(0)
+            with m.Else():
+                m.d.sync += self.digit.eq(self.digit + 1)
+        return m
 
 class BcdCounter(Component):
     """
