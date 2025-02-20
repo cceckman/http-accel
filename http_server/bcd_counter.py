@@ -70,7 +70,7 @@ class BcdCounter(Component):
               One-shot trigger, start writing the message to output.
     ovf     : Signal(1), out
               `ovf` is asserted when the counter overflows
-    outpu   : Stream(8), out
+    output  : Stream(8), out
               The data stream to write the message to.
     done    : High when stream is inactive, i.e., writing is done.
     """
