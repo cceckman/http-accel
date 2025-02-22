@@ -1,18 +1,8 @@
-from amaranth import Const, unsigned, Module, ClockDomain, DomainRenamer, Assert
+from amaranth import unsigned, Module
 from amaranth.lib.wiring import In, Out, Component
 from amaranth.lib import stream
-from amaranth.lib.cdc import PulseSynchronizer
-from amaranth.lib.fifo import AsyncFIFO, SyncFIFOBuffered
-from .http_match import HttpMatch
-
-try:
-    from up_counter import UpCounter
-    from number import Number
-    from printer import Printer
-except ImportError:
-    from .up_counter import UpCounter
-    from .number import Number
-    from .printer import Printer
+from http_match import HttpMatch
+from printer import Printer
 
 
 class HTTP10Server(Component):

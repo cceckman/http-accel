@@ -1,8 +1,8 @@
 from amaranth import Module, Signal, Array, Const
 from amaranth.lib.wiring import In, Out, Component
 from amaranth.lib import stream, fifo, memory
-from .string_alt_match import StringAltMatch
-from .string_match import StringMatch
+from string_alt_match import StringAltMatch
+from string_match import StringMatch
 
 
 class HttpMatch(Component):

@@ -4,11 +4,14 @@ from is_digit import IsDigit
 
 dut = IsDigit()
 
+
 async def test_exhaustive(ctx):
     for test in range(128):
         ctx.set(dut.input, test)
         await ctx.delay(1)
-        assert ctx.get(dut.is_digit) == chr(test).isdigit()
+        got = ctx.get(dut.is_digit)
+        want = chr(test).isdigit()
+        assert got == want, f"{test}: {got} {want}"
 
 sim = Simulator(dut)
 sim.add_testbench(test_exhaustive)
