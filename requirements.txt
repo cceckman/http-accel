@@ -9,8 +9,11 @@ git+https://github.com/amaranth-lang/amaranth-boards@9d97c4816288c9c2cc304d9280c
 
 git+https://github.com/amaranth-lang/amaranth-soc@5c43cf58f15d9cd9c69ff83c97997708d386b2dc
 
-# Support for amaranth 0.5
-
+# Support for amaranth 0.5;
+# This is merged to mainline
 git+https://github.com/greatscottgadgets/luna@1462160ba66302aaae69dca9e54fd71498a8b3ef
 
 regex
+# Dev dependencies:
+flake8
+pytest
