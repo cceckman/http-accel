@@ -1,6 +1,7 @@
 import amaranth as am
 from amaranth.lib.wiring import In, Out, Const, Component
 
+
 class IsDigit(Component):
     """
     Detects if the last value recieved on the input stream was an ASCII digit.
@@ -26,15 +27,15 @@ class IsDigit(Component):
         # 0b0011_1000 ('8')
         # 0b0011_1001 ('9')
         # So, if we match bit pattern 0b0011_0xxx or 0b0011_100x, the input is ASCII '0'-'9'
-        low_bits = Const(0b00110)
-        high_bits = Const(0b0011100)
+        low_bits = Const(0b0011_0)
+        high_bits = Const(0b0011_100)
 
         low = am.Signal(8)
         high = am.Signal(8)
 
         m.d.comb += [
-            high.eq(self.input[3:]),
-            low.eq(self.input[1:]),
+            high.eq(self.input[1:]),
+            low.eq(self.input[3:]),
             self.is_digit.eq(
                 (low == low_bits) |
                 (high == high_bits)
@@ -42,3 +43,4 @@ class IsDigit(Component):
         ]
 
         return m
+
