@@ -52,8 +52,6 @@ class FlagsLayout(Struct):
 class HeaderLayout(Struct):
     """
     Layout of a full ATCP header.
-
-    TODO: Fix byte order!
     """
 
     flags: FlagsLayout
@@ -96,7 +94,6 @@ class PacketSignature(Signature):
 
     def __init__(self):
         super().__init__({
-            "input": In(stream.Signature(8)),
             "header": Out(HeaderLayout),
             "stream_valid": Out(1),
             "header_valid": Out(1),
@@ -162,17 +159,17 @@ class ReadPacketStop(Component):
         # (connection-level) buffer.
 
         # Our state machine: what byte do we read in to next?
-        byte = Signal(4)
+        byte_counter = Signal(4)
         m.d.comb += [
             # Stream is valid once we've read byte[1]
-            stream_valid.eq(byte > 1),
+            stream_valid.eq(byte_counter > 1),
             stream_match.eq(
                 stream_valid & (
                     self.packet.header.stream == Const(self._stream_id)
                 )
             ),
             # Whole header is valid once we've read byte[9]
-            local_header_valid.eq(byte > 9),
+            local_header_valid.eq(byte_counter > 9),
             header_valid_and_matched.eq(stream_match & local_header_valid),
             # We always tee data to both outputs:
             data.payload.eq(self.inbus.payload),
@@ -226,10 +223,10 @@ class ReadPacketStop(Component):
             with m.If(can_transfer):
                 # Byte transferred at the end of this cycle.
                 m.d.sync += [
-                    byte.eq(byte + 1),
-                    pun.bytes[byte].eq(self.inbus.payload),
+                    byte_counter.eq(byte_counter + 1),
+                    pun.bytes[byte_counter].eq(self.inbus.payload),
                 ]
-                with m.If(byte == 4):
+                with m.If(byte_counter == 4):
                     # Capture the length.
                     m.d.sync += remaining_len.eq(self.packet.header.length)
         with m.Else():
@@ -244,6 +241,6 @@ class ReadPacketStop(Component):
             with m.If(can_transfer):
                 m.d.sync += remaining_len.eq(remaining_len - 1)
                 with m.If(remaining_len == 1):
-                    m.d.sync += byte.eq(0)
+                    m.d.sync += byte_counter.eq(0)
 
         return m

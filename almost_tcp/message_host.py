@@ -2,13 +2,9 @@
 Host-side implementation of the Almost TCP protocol.
 """
 
-import logging
-import asyncio
 from dataclasses import dataclass
-from typing import Dict, Optional
 import itertools
 import struct
-from asyncio import locks
 
 
 class NotEnoughDataError(Exception):
