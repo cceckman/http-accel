@@ -12,7 +12,7 @@ cat extras/fomu-serial.conf | sudo tee /etc/tlp.d/fomu-serial.conf
 Then try:
 
 ```
-source ./enter.sh
+. ./enter.sh
 python usb_serial.py
 ```
 
