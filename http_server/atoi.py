@@ -44,14 +44,14 @@ class AtoI(Component):
         m.d.comb += self.input.ready.eq(~self.reset)
 
         m.d.comb += [
-            error_comb.eq(self.input.valid & 
-                          (self.input.payload < Const(48)) | (self.input.payload > Const(57))),
+            error_comb.eq(am.Mux(self.input.valid, 
+                                 (self.input.payload < Const(48)) | (self.input.payload > Const(57)),
+                                 0)),
             # x*10 = x*8+x*2 = x<<3+x<<1
             shifted.eq((self.value << 3) + (self.value << 1)),
-            increment.eq(self.input.payload - Const(48))
+            increment.eq(self.input.payload - Const(48)),
+            next.eq(am.Mux(self.input.valid, shifted + increment, self.value))
         ]
-
-        m.d.comb += next.eq(am.Mux(self.input.valid, shifted + increment, self.value))
 
         # Error latches, and holds until next reset
         with m.If(self.reset):

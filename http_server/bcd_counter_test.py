@@ -2,7 +2,9 @@ from amaranth.sim import Simulator
 
 from bcd_counter import BcdCounter
 
-async def run_test(ctx, width, value):
+WIDTH = 5
+
+async def run_test(ctx, value, backpressure):
     ctx.set(dut.reset, 1)
     await ctx.tick()
     ctx.set(dut.reset, 0)
@@ -25,18 +27,30 @@ async def run_test(ctx, width, value):
         if ctx.get(dut.output.valid):
             got = ctx.get(dut.output.payload)
             buf += chr(got)
-            print("Current is ", buf)
+        if backpressure:
+            ctx.set(dut.output.ready, 0)
+            for _ in range(5):
+                await ctx.tick()
+            ctx.set(dut.output.ready, 1)
         await ctx.tick()
 
-    assert buf == f"{value:0{width}}"
+    assert buf == f"{value:0{WIDTH}}"
 
 
 async def bench(ctx):
-    await run_test(ctx, 3, 1)
-    await run_test(ctx, 3, 12)
-    await run_test(ctx, 3, 123)
+    await run_test(ctx, 1, backpressure=False)
+    await run_test(ctx, 12, backpressure=False)
+    await run_test(ctx, 123, backpressure=False)
+    await run_test(ctx, 1234, backpressure=False)
+    await run_test(ctx, 12345, backpressure=False)
+    await run_test(ctx, 1, backpressure=True)
+    await run_test(ctx, 12, backpressure=True)
+    await run_test(ctx, 123, backpressure=True)
+    await run_test(ctx, 1234, backpressure=True)
+    await run_test(ctx, 12345, backpressure=True)
 
-dut = BcdCounter(3, True)
+
+dut = BcdCounter(WIDTH, True)
 sim = Simulator(dut)
 sim.add_clock(1e-6)
 sim.add_testbench(bench)
