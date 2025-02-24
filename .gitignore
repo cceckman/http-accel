@@ -1,6 +1,7 @@
 venv.dir/
 venv
 .do_built.dir/
+.do_built
 *.did
 build/
 **/__pycache__/*
