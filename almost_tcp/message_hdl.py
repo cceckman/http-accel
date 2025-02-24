@@ -84,7 +84,7 @@ class PacketSignature(Signature):
     stream_valid:   Out(1)
                     High if the "stream" value from the header is valid.
     header_valid:   Out(1)
-                    High if the whole header is valid.
+                    High if the whole header is valid and for this stream.
 
     data:           Stream(8), out
                     Output stream for the body of the packet.
@@ -138,17 +138,18 @@ class ReadPacketStop(Component):
     def elaborate(self, platform):
         m = Module()
 
-        # Our header may be locally valid
-        # but not a match for the stream.
+        # Our header may be locally valid but not a match for the stream.
         local_header_valid = Signal(1)
+        local_stream_valid = Signal(1)
         header_valid_and_matched = self.packet.header_valid
-        stream_valid = self.packet.stream_valid
+        stream_valid_and_matched = self.packet.stream_valid
         data = self.packet.data
         stream_match = Signal(1)
 
-        # We add a 1-slot FIFO to the bus output
-        # to avoid long combinatorial paths.
-        m.submodules.outbus = outbus = SyncFIFOBuffered(width=8, depth=1)
+        # Add a FIFO in the hope of avoiding long combinational paths.
+        # According to the simulator, this needs to be at least 3 deep to avoid
+        # backpressure into the input.
+        m.submodules.outbus = outbus = SyncFIFOBuffered(width=8, depth=4)
         m.d.comb += [
             self.outbus.payload.eq(outbus.r_data),
             self.outbus.valid.eq(outbus.r_rdy),
@@ -162,15 +163,14 @@ class ReadPacketStop(Component):
         byte_counter = Signal(4)
         m.d.comb += [
             # Stream is valid once we've read byte[1]
-            stream_valid.eq(byte_counter > 1),
+            local_stream_valid.eq(byte_counter > 1),
             stream_match.eq(
-                stream_valid & (
-                    self.packet.header.stream == Const(self._stream_id)
-                )
+                self.packet.header.stream == Const(self._stream_id)
             ),
             # Whole header is valid once we've read byte[9]
             local_header_valid.eq(byte_counter > 9),
             header_valid_and_matched.eq(stream_match & local_header_valid),
+            stream_valid_and_matched.eq(stream_match & local_stream_valid),
             # We always tee data to both outputs:
             data.payload.eq(self.inbus.payload),
             outbus.w_data.eq(self.inbus.payload),
@@ -234,8 +234,8 @@ class ReadPacketStop(Component):
             # and optionally to the local channel too.
             m.d.comb += [
                 can_transfer.eq(self.inbus.valid &
-                                outbus.w_rdy & data.ready),
-                data.valid.eq(can_transfer),
+                                outbus.w_rdy & (data.ready | ~stream_match)),
+                data.valid.eq(can_transfer & stream_match),
             ]
 
             with m.If(can_transfer):

@@ -3,6 +3,8 @@ Test fixtures for sending and receiving packets and streams.
 """
 import random
 from message_host import Packet
+from typing import List
+from functools import reduce
 
 
 class StreamCollector:
@@ -14,7 +16,6 @@ class StreamCollector:
     # Otherwise, the stream is always ready.
     random_backpressure: bool = False
 
-    # The collected body.
     body: bytes = bytes()
 
     def __init__(self, random_backpressure=False):
@@ -43,7 +44,6 @@ class StreamCollector:
                     # We just transferred a payload byte.
                     self.body = self.body + bytes([payload])
                 ready = self.is_ready()
-                # ready = 1
                 ctx.set(stream.ready, ready)
         return collector
 
@@ -58,17 +58,14 @@ class StreamCollector:
         return len(self.body)
 
 
-class PacketSender:
+class MultiPacketSender:
     """
-    Transmit a packet into an Amaranth data stream.
+    Transmit multiple packets into an Amaranth data stream.
     """
 
     # Set to true to apply random delays to input.
     # Otherwise, the stream is always ready.
     random_delay: bool = False
-
-    # The collected body.
-    body: bytes = bytes()
 
     def __init__(self, random_delay=False):
         super().__init__()
@@ -84,8 +81,9 @@ class PacketSender:
         else:
             return 1
 
-    def send(self, packet: Packet, stream):
-        b = packet.encode()
+    def send(self, packets: List[Packet], stream):
+        byte_arrays = [p.encode() for p in packets]
+        b = reduce(lambda a, b: a + b, byte_arrays, bytes())
 
         async def sender(ctx):
             counter = 0
@@ -98,11 +96,21 @@ class PacketSender:
                     # We just transferred the byte.
                     counter += 1
                 # Update the payload:
-                if counter < len(b):
-                    ctx.set(stream.payload, b[counter])
-                else:
-                    ctx.set(stream.payload, counter % 256)
+                if counter >= len(b):
+                    break
+                ctx.set(stream.payload, b[counter])
                 valid = self.is_valid()
                 ctx.set(stream.valid, valid)
+            # Break: end of stream.
+            ctx.set(stream.valid, 0)
 
         return sender
+
+
+class PacketSender(MultiPacketSender):
+    """
+    Transmit a single packet into an Amaranth data stream.
+    """
+
+    def send(self, packet: Packet, stream):
+        return super().send([packet], stream)
