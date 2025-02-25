@@ -312,14 +312,14 @@ class SendPacketRoot(Component):
         # to avoid a long comb path.
         m.d.sync += [
             has_token.eq(self.upstream.token),
-            self.downstream.eq(has_token),
+            self.downstream.token.eq(has_token),
         ]
 
         # All input data is forwarded to our output without delay.
         connect(m, self.upstream.data, self.output)
 
         # Since we produce no data, our input is always !valid.
-        m.d.comb += self.upstream.outdata.valid.eq(0)
+        m.d.comb += self.upstream.data.valid.eq(0)
 
         return m
 
@@ -346,7 +346,7 @@ class SendPacketStop(Component):
 
     """
     packet: In(PacketSignature())
-    upstream: Out(SendPacketSignature())
+    upstream: In(SendPacketSignature())
     downstream: Out(SendPacketSignature())
 
     def elaborate(self, platform):
@@ -354,7 +354,7 @@ class SendPacketStop(Component):
 
         m.submodules.downstream = buffer = SyncFIFOBuffered(
             width=8, depth=4)
-        connect(m, buffer.r_stream, self.downstream.data)
+        self.downstream.data = buffer.r_stream
 
         # Convert the packet back to bytes, in the right order,
         # to make it easier to transmit
@@ -375,7 +375,11 @@ class SendPacketStop(Component):
             with m.State("idle"):
                 m.next = "idle"
                 # Take input from upstream.
-                connect(m, buffer.w_stream, self.upstream.data)
+                m.d.comb += [
+                    self.upstream.data.ready.eq(buffer.w_stream.ready),
+                    buffer.w_stream.payload.eq(self.upstream.data.payload),
+                    buffer.w_stream.valid.eq(self.upstream.data.valid),
+                ]
 
                 with m.If(self.upstream.token & self.packet.header_valid):
                     # Claim the token.
@@ -409,9 +413,13 @@ class SendPacketStop(Component):
                 with m.Else():
                     m.d.comb += Assert(self.packet.header_valid)
                     # Enqueue from the body.
-                    connect(m, buffer.w_stream, self.packet.body)
-                    with m.Elif(self.packet.body.ready &
-                                self.packet.body.valid):
+                    m.d.comb += [
+                        self.packet.data.ready.eq(buffer.w_stream.ready),
+                        buffer.w_stream.payload.eq(self.packet.data.payload),
+                        buffer.w_stream.valid.eq(self.packet.data.valid),
+                    ]
+                    with m.If(self.packet.data.ready &
+                              self.packet.data.valid):
                         # Byte was enqueued.
                         m.d.sync += byte_counter.eq(byte_counter - 1)
             # Finish dequeueing our packet before passing on the token.

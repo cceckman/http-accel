@@ -9,6 +9,12 @@ from packet_fixtures import StreamCollector, MultiPacketSender
 
 
 class AtcpReadBus(Component):
+    """
+    A two-stream packet receive bus.
+
+    Packets come in via `inbus`. Streams 3 and 5 are forwarded to
+    `three` and `five` respectively.
+    """
 
     inbus: In(stream.Signature(8))
     three: Out(PacketSignature())

@@ -57,6 +57,7 @@ if __name__ == "__main__":
     import sys
 
     sim = Simulator(dut)
+
     body_collector = StreamCollector(
         random_backpressure=True, stream=dut.packet.data)
     packets_collector = StreamCollector(
@@ -77,6 +78,7 @@ if __name__ == "__main__":
 
     sim.add_clock(1e-6)
     sim.add_process(sender.send(p))
+
     sim.add_process(body_collector.collect())
     sim.add_process(packets_collector.collect())
     sim.add_testbench(bench(dut, body_collector, packets_collector, p))
