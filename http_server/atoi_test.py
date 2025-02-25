@@ -4,7 +4,7 @@ from atoi import AtoI
 
 dut = AtoI(32)
 
-async def run_test_case(ctx, input: str, expected: int) -> int: 
+async def run_test_case(ctx, input: str, expected: int): 
     ctx.set(dut.reset, 1)
     await ctx.tick()
     ctx.set(dut.reset, 0)
@@ -17,7 +17,6 @@ async def run_test_case(ctx, input: str, expected: int) -> int:
         assert ctx.get(dut.error) == 0
     
     assert ctx.get(dut.value) == expected
-
 
 async def test_simple(ctx):
     await run_test_case(ctx, "1", 1)
@@ -50,9 +49,33 @@ async def test_simple_error(ctx):
     await ctx.tick()
     assert ctx.get(dut.error) == 0
 
+async def run_ignores_invalid_case(ctx, input: str, expected: int):
+    ctx.set(dut.reset, 1)
+    await ctx.tick()
+    ctx.set(dut.reset, 0)
+
+    for c in input:
+        ctx.set(dut.input.payload, ord(c))
+        ctx.set(dut.input.valid, 1)
+        await ctx.tick()
+        ctx.set(dut.input.valid, 0)
+        ctx.set(dut.input.payload, ord("x"))
+        await ctx.tick()
+        assert ctx.get(dut.error) == 0
+    
+    assert ctx.get(dut.value) == expected
+
+async def test_ignores_invalid(ctx):
+    await run_ignores_invalid_case(ctx, "1", 1)
+    await run_ignores_invalid_case(ctx, "12", 12)
+    await run_ignores_invalid_case(ctx, "123", 123)
+    await run_ignores_invalid_case(ctx, "1234", 1234)
+    await run_ignores_invalid_case(ctx, "12345", 12345)
+
 async def bench(ctx):
     await test_simple(ctx)
     await test_simple_error(ctx)
+    await test_ignores_invalid(ctx)
 
 sim = Simulator(dut)
 sim.add_clock(1e-6)
