@@ -18,8 +18,8 @@ All numeric fields are network-endian (big-endian).
 
 """
 
-from amaranth import Module, Signal, unsigned, Const
-from amaranth.lib.wiring import Component, In, Out, Signature
+from amaranth import Module, Signal, unsigned, Const, Assert
+from amaranth.lib.wiring import Component, In, Out, Signature, connect
 from amaranth.lib import stream
 from amaranth.lib.data import UnionLayout, ArrayLayout, Struct
 from amaranth.lib.fifo import SyncFIFOBuffered
@@ -218,7 +218,6 @@ class ReadPacketStop(Component):
         m.submodules.swizzle = swizzle = HeaderSwizzle()
         m.d.comb += [swizzle.inheader.eq(network),
                      self.packet.header.eq(swizzle.outheader)]
-
         # We may have to wait for the next stop on the bus, or our local stop,
         # before we take from the input.
         # In either case, every byte from the inbus goes to the outbus.
@@ -257,5 +256,173 @@ class ReadPacketStop(Component):
                 m.d.sync += remaining_len.eq(remaining_len - 1)
                 with m.If(remaining_len == 1):
                     m.d.sync += byte_counter.eq(0)
+
+        return m
+
+
+class SendPacketSignature(Signature):
+    """
+    A stop on the send-packet bus.
+
+    A token passes around the bus to indicate which stop has a right to transmit.
+    Each stop either holds the token (while transmitting its own packet to
+    `outdata`) or passes the token, bridging `indata` to `outdata` while
+    not holding the token.
+
+    Attributes
+    ----------
+    token: Out(1)
+        Asserted for one cycle to pass the token from this stop.
+    data:
+        Downstream data, outbound from the bus.
+    """
+
+    def __init__(self):
+        super().__init__({
+            "token": Out(1),
+            "data": Out(stream.Signature(8)),
+        })
+
+
+class SendPacketRoot(Component):
+    """
+    The root node on the packet-sending ring bus.
+
+    The packet-sending bus is token-based: the root begins with a "send" token,
+    which propagates around. If a stop has a packet to send, it can hold on to
+    the token until its packet is fully transmitted.
+
+    The data transits the same bus.
+
+    Attributes
+    ----------
+    output: The output stream for the bus as a whole.
+    bus: Connection to the rest of the bus.
+    """
+
+    upstream: In(SendPacketSignature())
+    downstream: Out(SendPacketSignature())
+    output: Out(stream.Signature(8))
+
+    def elaborate(self, platform):
+        m = Module()
+
+        has_token = Signal(1, reset=1)
+        # Include one cycle of delay for passing the token,
+        # to avoid a long comb path.
+        m.d.sync += [
+            has_token.eq(self.upstream.token),
+            self.downstream.eq(has_token),
+        ]
+
+        # All input data is forwarded to our output without delay.
+        connect(m, self.upstream.data, self.output)
+
+        # Since we produce no data, our input is always !valid.
+        m.d.comb += self.upstream.outdata.valid.eq(0)
+
+        return m
+
+
+class SendPacketStop(Component):
+    """
+    Stop on a packet-sending bus.
+
+    All stops get all bytes, even those not destined for this stop.
+
+    Parameters
+    ----------
+    id: int
+        Stream ID for this stop.
+
+    Attributes
+    -----------
+    input: In(PacketSignature)
+        A packet to transmit. header_valid provides the "I have data" signal.
+    upstream: In(SendPacketSignature)
+        Upstream connection to the bus.
+    downstream: Out(SendPacketSignature)
+        Downstream connection to the bus.
+
+    """
+    packet: In(PacketSignature())
+    upstream: Out(SendPacketSignature())
+    downstream: Out(SendPacketSignature())
+
+    def elaborate(self, platform):
+        m = Module()
+
+        m.submodules.downstream = buffer = SyncFIFOBuffered(
+            width=8, depth=4)
+        connect(m, buffer.r_stream, self.downstream.data)
+
+        # Convert the packet back to bytes, in the right order,
+        # to make it easier to transmit
+        mixed_view = UnionLayout(
+            {
+                "bytes": ArrayLayout(unsigned(8), 10),
+                "header": HeaderLayout
+            })
+        m.submodules.swizzle = swizzle = HeaderSwizzle()
+        pun = mixed_view(swizzle.outheader)
+        swizzle.inheader = self.packet.header
+        # Byte counter: counts up for header packets, counts down for length.
+        byte_counter = Signal(16)
+
+        # By default, don't transmit the token.
+        m.d.sync += self.downstream.token.eq(0)
+        with m.FSM(name="send_packet"):
+            with m.State("idle"):
+                m.next = "idle"
+                # Take input from upstream.
+                connect(m, buffer.w_stream, self.upstream.data)
+
+                with m.If(self.upstream.token & self.packet.header_valid):
+                    # Claim the token.
+                    # All data from upstream is in our buffer.
+                    m.next = "tx_header"
+                    m.d.sync += byte_counter.eq(0)
+                with m.Else():
+                    # Propagate the token at the clock edge.
+                    m.d.sync += self.downstream.token.eq(self.upstream.token)
+
+            # With the token...
+            with m.State("tx_header"):
+                m.next = "tx_header"
+                m.d.comb += [
+                    buffer.w_stream.payload.eq(pun.bytes[byte_counter]),
+                    buffer.w_stream.valid.eq(1),
+                ]
+                with m.If(buffer.w_stream.ready):
+                    # The header byte was transmitted. Move on to the next,
+                    # or to the body.
+                    m.d.sync += byte_counter.eq(byte_counter + 1)
+                    with m.If(byte_counter > 9):
+                        m.next = "tx_body"
+                        byte_counter = self.packet.header.length
+
+            with m.State("tx_body"):
+                m.next = "tx_body"
+                with m.If(byte_counter == 0):
+                    # No data left? Proceed directly to flush.
+                    m.next = "flush"
+                with m.Else():
+                    m.d.comb += Assert(self.packet.header_valid)
+                    # Enqueue from the body.
+                    connect(m, buffer.w_stream, self.packet.body)
+                    with m.Elif(self.packet.body.ready &
+                                self.packet.body.valid):
+                        # Byte was enqueued.
+                        m.d.sync += byte_counter.eq(byte_counter - 1)
+            # Finish dequeueing our packet before passing on the token.
+            # This ensures that our packet is in the next stop's buffers
+            # before we pass on the token
+            # (and the next stop starts buffering its own data).
+            with m.State("flush"):
+                m.next = "flush"
+                with m.If(buffer.r_level == 0):
+                    # Release the token.
+                    m.d.sync += self.downstream.token.eq(1)
+                    m.next = "idle"
 
         return m
