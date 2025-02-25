@@ -2,14 +2,39 @@
 Test fixtures for sending and receiving packets and streams.
 """
 import random
-from message_host import Packet
+from message_host import Packet, Header, Flags
 from typing import List
 from functools import reduce
+from hypothesis import strategies as st
+
+
+@st.composite
+def arbitrary_packet(
+    draw,
+    flags=st.integers(0, 255),
+    stream=st.integers(0, 255),
+    window=st.integers(0, (2**16)-1),
+    seq=st.integers(0, (2**16)-1),
+    ack=st.integers(0, (2**16)-1),
+    body=st.binary(),
+):
+    """
+    Hypothesis strategy for generating an arbitrary packet.
+    The length matches the data length.
+    """
+    body = draw(body)
+    length = len(body)
+    header = Header(
+        flags=Flags.decode(bytes([flags])),
+        stream=draw(stream), window=draw(window), seq=draw(seq), ack=draw(ack),
+        length=length,
+    )
+    return Packet(header=header, body=body)
 
 
 class StreamCollector:
     """
-    Collects data from an Amaranth data stream.
+    Collects raw data from an Amaranth data stream.
     """
 
     # Set to true to apply random backpressure.
@@ -60,16 +85,22 @@ class StreamCollector:
 
 class MultiPacketSender:
     """
-    Transmit multiple packets into an Amaranth data stream.
+    Transmit multiple packets into an Amaranth object.
     """
 
     # Set to true to apply random delays to input.
     # Otherwise, the stream is always ready.
     random_delay: bool = False
 
-    def __init__(self, random_delay=False):
+    def __init__(self,
+                 random_delay=False,
+                 stream=None,
+                 packet=None
+                 ):
         super().__init__()
         self.random_delay = random_delay
+        self._stream = stream
+        self._packet = packet
 
     def is_valid(self):
         """
@@ -81,11 +112,20 @@ class MultiPacketSender:
         else:
             return 1
 
-    def send(self, packets: List[Packet], stream):
+    def send(self, packets: List[Packet]):
+        if self._stream is not None:
+            return self.send_stream(packets)
+        elif self._packet is not None:
+            assert False, "TODO: Support sending into PacketSignature"
+        else:
+            assert False, "MultiPacketSender is not configured with any output"
+
+    def send_stream(self, packets: List[Packet]):
         byte_arrays = [p.encode() for p in packets]
         b = reduce(lambda a, b: a + b, byte_arrays, bytes())
 
         async def sender(ctx):
+            stream = self._stream
             counter = 0
             valid = self.is_valid()
             ctx.set(stream.valid, valid)
@@ -109,8 +149,8 @@ class MultiPacketSender:
 
 class PacketSender(MultiPacketSender):
     """
-    Transmit a single packet into an Amaranth data stream.
+    Transmit a single packet into Amaranth.
     """
 
-    def send(self, packet: Packet, stream):
-        return super().send([packet], stream)
+    def send(self, packet: Packet):
+        return super().send([packet])

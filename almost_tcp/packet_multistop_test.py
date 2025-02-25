@@ -9,6 +9,12 @@ from packet_fixtures import StreamCollector, MultiPacketSender
 
 
 class AtcpReadBus(Component):
+    """
+    A two-stream packet receive bus.
+
+    Packets come in via `inbus`. Streams 3 and 5 are forwarded to
+    `three` and `five` respectively.
+    """
 
     inbus: In(stream.Signature(8))
     three: Out(PacketSignature())
@@ -81,7 +87,7 @@ def sim_main():
     five_collector = StreamCollector(random_backpressure=False)
     # We don't delay in the input, so we can detect
     # the sender's completion from within the testbench.
-    sender = MultiPacketSender(random_delay=False)
+    sender = MultiPacketSender(random_delay=False, stream=dut.inbus)
     data = bytes(i % 256 for i in range(0, 50))
     p = Packet(
         Header(
@@ -110,7 +116,7 @@ def sim_main():
 
     sim.add_process(three_collector.collect(dut.three.data))
     sim.add_process(five_collector.collect(dut.five.data))
-    sim.add_process(sender.send([p0, p, p0], dut.inbus))
+    sim.add_process(sender.send([p0, p, p0]))
     sim.add_testbench(bench_stream3(dut, p))
 
     with sim.write_vcd(sys.stdout):
