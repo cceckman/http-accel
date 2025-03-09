@@ -19,7 +19,7 @@ All numeric fields are network-endian (big-endian).
 """
 
 from amaranth import Module, Signal, unsigned, Const, Assert
-from amaranth.lib.wiring import Component, In, Out, Signature, connect
+from amaranth.lib.wiring import Component, In, Out, Signature, connect, flipped
 from amaranth.lib import stream
 from amaranth.lib.data import UnionLayout, ArrayLayout, Struct
 from amaranth.lib.fifo import SyncFIFOBuffered
@@ -82,7 +82,7 @@ class PacketSignature(Signature):
     header:         Header, out
                     The header curently read in to the buffer.
     stream_valid:   Out(1)
-                    High if the "stream" value from the header is valid.
+                    High if the "stream" field from the header is valid.
     header_valid:   Out(1)
                     High if the whole header is valid and for this stream.
 
@@ -352,9 +352,9 @@ class SendPacketStop(Component):
     def elaborate(self, platform):
         m = Module()
 
-        m.submodules.downstream = buffer = SyncFIFOBuffered(
+        buffer = m.submodules.downstream = SyncFIFOBuffered(
             width=8, depth=4)
-        self.downstream.data = buffer.r_stream
+        connect(m, buffer.r_stream, flipped(self.downstream.data))
 
         # Convert the packet back to bytes, in the right order,
         # to make it easier to transmit
@@ -365,7 +365,7 @@ class SendPacketStop(Component):
             })
         m.submodules.swizzle = swizzle = HeaderSwizzle()
         pun = mixed_view(swizzle.outheader)
-        swizzle.inheader = self.packet.header
+        m.d.comb += swizzle.inheader.eq(self.packet.header)
         # Byte counter: counts up for header packets, counts down for length.
         byte_counter = Signal(16)
 
@@ -375,11 +375,7 @@ class SendPacketStop(Component):
             with m.State("idle"):
                 m.next = "idle"
                 # Take input from upstream.
-                m.d.comb += [
-                    self.upstream.data.ready.eq(buffer.w_stream.ready),
-                    buffer.w_stream.payload.eq(self.upstream.data.payload),
-                    buffer.w_stream.valid.eq(self.upstream.data.valid),
-                ]
+                connect(m, self.upstream.data, flipped(buffer.w_stream))
 
                 with m.If(self.upstream.token & self.packet.header_valid):
                     # Claim the token.
@@ -413,11 +409,7 @@ class SendPacketStop(Component):
                 with m.Else():
                     m.d.comb += Assert(self.packet.header_valid)
                     # Enqueue from the body.
-                    m.d.comb += [
-                        self.packet.data.ready.eq(buffer.w_stream.ready),
-                        buffer.w_stream.payload.eq(self.packet.data.payload),
-                        buffer.w_stream.valid.eq(self.packet.data.valid),
-                    ]
+                    connect(m, self.packet.data, flipped(buffer.w_stream))
                     with m.If(self.packet.data.ready &
                               self.packet.data.valid):
                         # Byte was enqueued.

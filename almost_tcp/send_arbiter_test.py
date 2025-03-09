@@ -203,10 +203,10 @@ def test_packet_transmission(a_packets: List[Packet], b_packets: List[Packet]):
 
 
 if __name__ == "__main__":
-    test_root()
+    # test_root()
     # test_packet_transmission(
     #     a_packets=[
     #         Packet(Header(flags=Flags(cwr=True), length=1, stream=2),
     #                bytes([0x25]))], b_packets=[]
     # )
-    # test_send_stop()
+    test_send_stop()
