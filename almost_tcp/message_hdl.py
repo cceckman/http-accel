@@ -216,8 +216,8 @@ class ReadPacketStop(Component):
         network = Signal(HeaderLayout)
         pun = mixed_view(network)
         m.submodules.swizzle = swizzle = HeaderSwizzle()
-        swizzle.inheader = network
-        self.packet.header = swizzle.outheader
+        m.d.comb += [swizzle.inheader.eq(network),
+                     self.packet.header.eq(swizzle.outheader)]
 
         # We may have to wait for the next stop on the bus, or our local stop,
         # before we take from the input.
