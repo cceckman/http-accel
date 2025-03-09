@@ -330,11 +330,6 @@ class SendPacketStop(Component):
 
     All stops get all bytes, even those not destined for this stop.
 
-    Parameters
-    ----------
-    id: int
-        Stream ID for this stop.
-
     Attributes
     -----------
     input: In(PacketSignature)

@@ -7,6 +7,7 @@ from typing import List
 from functools import reduce
 from hypothesis import strategies as st
 
+
 __all__ = ["arbitrary_packet", "StreamCollector",
            "PacketCollector", "PacketSender", "MultiPacketSender"]
 
@@ -210,6 +211,7 @@ class MultiPacketSender:
         packet interface.
         """
         async def sender(ctx):
+
             self.done = False
             iface = self._packet
             for packet in packets:
