@@ -101,6 +101,33 @@ class PacketSignature(Signature):
         })
 
 
+class HeaderSwizzle(Component):
+    """
+    Converts header packet fields from network order to little-endian,
+    or vice-versa.
+    """
+    inheader: In(HeaderLayout)
+    outheader: Out(HeaderLayout)
+
+    def elaborate(self, platform):
+        m = Module()
+
+        m.d.comb += [
+            self.outheader.flags.eq(self.inheader.flags),
+            self.outheader.stream.eq(self.inheader.stream),
+            self.outheader.length[0:8].eq(self.inheader.length[8:16]),
+            self.outheader.length[8:16].eq(self.inheader.length[0:8]),
+            self.outheader.window[0:8].eq(self.inheader.window[8:16]),
+            self.outheader.window[8:16].eq(self.inheader.window[0:8]),
+            self.outheader.seq[0:8].eq(self.inheader.seq[8:16]),
+            self.outheader.seq[8:16].eq(self.inheader.seq[0:8]),
+            self.outheader.ack[0:8].eq(self.inheader.ack[8:16]),
+            self.outheader.ack[8:16].eq(self.inheader.ack[0:8]),
+        ]
+
+        return m
+
+
 class ReadPacketStop(Component):
     """
     Stop on a packet-reading bus.
@@ -188,21 +215,9 @@ class ReadPacketStop(Component):
             })
         network = Signal(HeaderLayout)
         pun = mixed_view(network)
-
-        # We combinatorially convert between the network order
-        # and little-endian.
-        m.d.comb += [
-            self.packet.header.flags.eq(network.flags),
-            self.packet.header.stream.eq(network.stream),
-            self.packet.header.length[0:8].eq(network.length[8:16]),
-            self.packet.header.length[8:16].eq(network.length[0:8]),
-            self.packet.header.window[0:8].eq(network.window[8:16]),
-            self.packet.header.window[8:16].eq(network.window[0:8]),
-            self.packet.header.seq[0:8].eq(network.seq[8:16]),
-            self.packet.header.seq[8:16].eq(network.seq[0:8]),
-            self.packet.header.ack[0:8].eq(network.ack[8:16]),
-            self.packet.header.ack[8:16].eq(network.ack[0:8]),
-        ]
+        m.submodules.swizzle = swizzle = HeaderSwizzle()
+        swizzle.inheader = network
+        self.packet.header = swizzle.outheader
 
         # We may have to wait for the next stop on the bus, or our local stop,
         # before we take from the input.
