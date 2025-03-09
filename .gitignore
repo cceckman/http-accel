@@ -6,3 +6,4 @@ venv
 build/
 **/__pycache__/*
 *.vcd
+**/.hypothesis/
