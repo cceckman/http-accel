@@ -27,7 +27,14 @@ class Printer(Component):
     done: Out(1, init=1)
 
     def __init__(self, message):
-        self._message = Array(map(ord, message))
+        if isinstance(message, str):
+            message = message.encode("utf-8")
+        elif isinstance(message, bytes):
+            pass
+        else:
+            raise ValueError("message must be a string or byte array")
+
+        self._message = Array(message)
         super().__init__()
 
     def elaborate(self, platform):

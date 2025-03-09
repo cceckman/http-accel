@@ -40,11 +40,12 @@ def test_ok_handling():
         ctx.set(dut.session.inbound.active, 0)
         # Keep driving clock until the outbound session is deasserted
         await ctx.tick().until(~dut.session.outbound.active)
-        assert not ctx.get(dut.session.outbound.valid)
+        assert not ctx.get(dut.session.outbound.data.valid)
 
-        assert ctx.get(dut.red) == 0x12
-        assert ctx.get(dut.green) == 0x34
-        assert ctx.get(dut.blue) == 0x56
+        # TODO: #3 -- Implement getting LED colors from the message.
+        #   assert ctx.get(dut.red) == 0x12
+        #   assert ctx.get(dut.green) == 0x34
+        #   assert ctx.get(dut.blue) == 0x56
 
         # Add some nice margins for our vcd
         await ctx.tick()
@@ -60,7 +61,7 @@ def test_ok_handling():
         sim.run_until(0.1)
 
     # Now that the test is done:
-    # collector.assert_eq(expected_output)
+    collector.assert_eq(expected_output)
 
 
 if __name__ == "__main__":

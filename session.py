@@ -31,8 +31,8 @@ class SessionSignature(Signature):
 
 class BidiSessionSignature(Signature):
     """
-    - Start with inbound.session_active raised: "new request"
-    - Wait for outbound.session_active to be raised before inputting data
+    - Start with inbound.active raised: "new request"
+    - Wait for outbound.active to be raised before inputting data
     - Data flows
     - Wait until outbound data flushed before deasserting session_active
     - Early termination (e.g. 400): flush inbound data until inbound.session_active deasserted

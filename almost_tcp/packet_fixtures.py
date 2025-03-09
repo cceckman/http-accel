@@ -47,12 +47,22 @@ class StreamCollector:
                 ctx.set(stream.ready, ready)
         return collector
 
-    def assert_eq(self, other: bytes):
+    def assert_eq(self, other):
+        if isinstance(other, str):
+            other = other.encode("utf-8")
+        elif isinstance(other, bytes):
+            pass
+        else:
+            raise ValueError("other must be a string or byte array")
+
         got = self.body
         want = other
-        assert len(got) == len(want), f"got: {len(got)} want: {len(want)}"
+
+        debug = f"got body:\n{got}\nwant body:\n{want}"
+
+        assert len(got) == len(want), debug
         for b in range(len(want)):
-            assert got[b] == want[b]
+            assert got[b] == want[b], debug
 
     def __len__(self):
         return len(self.body)
