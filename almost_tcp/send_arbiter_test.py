@@ -51,12 +51,13 @@ def test_send_stop(packets: List[Packet], extra_data: bytes):
 
     sender = MultiPacketSender(random_delay=False,
                                packet=dut.packet)
-    collector = StreamCollector(random_backpressure=False)
+    collector = StreamCollector(
+        random_backpressure=False, stream=dut.downstream.data)
 
     sim = Simulator(dut)
     sim.add_clock(1e-6)
     sim.add_process(sender.send(packets))
-    sim.add_process(collector.collect(dut.downstream.data))
+    sim.add_process(collector.collect())
 
     async def bench(ctx):
         # Start with some data, without passing the token.
@@ -129,7 +130,9 @@ def test_packet_transmission(a_packets: List[Packet], b_packets: List[Packet]):
         sim.run_until(0.01)
 
     # Make sure we didn't time out
-    assert len(out.packets) == total_packets
+    assert len(
+        out.packets) == total_packets, (
+            f"got: {len(out.packets)}, want: {total_packets}")
 
     # The collected packets must be some interpolation of the two streams.
     for i in range(len(out.packets)):
@@ -145,5 +148,5 @@ def test_packet_transmission(a_packets: List[Packet], b_packets: List[Packet]):
 
 
 if __name__ == "__main__":
-    # test_packet_transmission()
-    test_send_stop()
+    test_packet_transmission()
+    # test_send_stop()
