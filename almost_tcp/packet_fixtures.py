@@ -49,9 +49,10 @@ class StreamCollector:
 
     body: bytes = bytes()
 
-    def __init__(self, random_backpressure=False):
+    def __init__(self, stream, random_backpressure=False):
         super().__init__()
         self.random_backpressure = random_backpressure
+        self._stream = stream
 
     def is_ready(self):
         """
@@ -63,7 +64,9 @@ class StreamCollector:
         else:
             return 1
 
-    def collect(self, stream):
+    def collect(self):
+        stream = self._stream
+
         async def collector(ctx):
             ready = self.is_ready()
             ctx.set(stream.ready, ready)
@@ -172,6 +175,9 @@ class MultiPacketSender:
     # Otherwise, the stream is always ready.
     random_delay: bool = False
 
+    # Flag bit, signaled when all bytes from all packets have been delivered.
+    done: bool = False
+
     def __init__(self,
                  random_delay=False,
                  stream=None,
@@ -214,12 +220,25 @@ class MultiPacketSender:
         packet interface.
         """
         async def sender(ctx):
+            self.done = False
             iface = self._packet
             for packet in packets:
-                # TODO: Hack here -- we haven't actually transmitted length etc.
-                ctx.set(iface.header.flags.fin, 1)
+                ctx.set(iface.header.flags.fin, packet.header.flags.fin)
+                ctx.set(iface.header.flags.syn, packet.header.flags.syn)
+                ctx.set(iface.header.flags.rst, packet.header.flags.rst)
+                ctx.set(iface.header.flags.psh, packet.header.flags.psh)
+                ctx.set(iface.header.flags.ack, packet.header.flags.ack)
+                ctx.set(iface.header.flags.urg, packet.header.flags.urg)
+                ctx.set(iface.header.flags.ecn, packet.header.flags.ecn)
+                ctx.set(iface.header.flags.cwr, packet.header.flags.cwr)
+                ctx.set(iface.header.stream, packet.header.stream)
+                ctx.set(iface.header.length, packet.header.length)
+                ctx.set(iface.header.window, packet.header.window)
+                ctx.set(iface.header.seq, packet.header.seq)
+                ctx.set(iface.header.ack, packet.header.ack)
 
                 # Mark the header present:
+                ctx.set(iface.stream_valid, 1)
                 ctx.set(iface.header_valid, 1)
 
                 counter = 0
@@ -249,6 +268,8 @@ class MultiPacketSender:
                         ctx.tick().sample(iface.data.ready)):
                     pass
 
+                self.done = True
+
         return sender
 
     def send_to_stream(self, packets: List[Packet]):
@@ -258,6 +279,7 @@ class MultiPacketSender:
         stream = self._stream
         byte_arrays = [p.encode() for p in packets]
         b = reduce(lambda a, b: a + b, byte_arrays, bytes())
+        self.done = False
 
         async def sender(ctx):
             ctx.set(stream.valid, 0)
@@ -284,6 +306,8 @@ class MultiPacketSender:
                 ctx.set(stream.valid, valid)
             # Break: end of stream.
             ctx.set(stream.valid, 0)
+
+            self.done = True
 
         return sender
 
