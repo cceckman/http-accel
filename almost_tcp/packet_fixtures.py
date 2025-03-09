@@ -2,7 +2,7 @@
 Test fixtures for sending and receiving packets and streams.
 """
 import random
-from message_host import Packet
+from almost_tcp.message_host import Packet
 from typing import List
 from functools import reduce
 
