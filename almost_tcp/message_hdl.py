@@ -316,10 +316,15 @@ class SendPacketRoot(Component):
         ]
 
         # All input data is forwarded to our output without delay.
-        connect(m, self.upstream.data, self.output)
+        # Note: connect() doesn't seem to work here?
+        m.d.comb += [
+            self.upstream.data.ready.eq(self.output.ready),
+            self.output.payload.eq(self.upstream.data.payload),
+            self.output.valid.eq(self.upstream.data.valid),
+        ]
 
         # Since we produce no data, our input is always !valid.
-        m.d.comb += self.upstream.data.valid.eq(0)
+        m.d.comb += self.downstream.data.valid.eq(0)
 
         return m
 
