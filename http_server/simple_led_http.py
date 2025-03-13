@@ -1,7 +1,8 @@
-from amaranth import Module
+from amaranth import Module, Const
 from amaranth.lib.wiring import In, Out, Component, connect
 
 from printer import Printer
+from stream_mux import StreamMux
 
 import session
 
@@ -35,19 +36,32 @@ class SimpleLedHttp(Component):
     def elaborate(self, _platform):
         m = Module()
 
-        response = "\r\n".join(
+        response_mux = m.submodules.response_mux = StreamMux(mux_width=2, stream_width=8)
+        connect(m, response_mux.out, self.session.outbound.data)
+
+        ok_response = "\r\n".join(
             ["HTTP/1.0 200 OK",
              "Host: Fomu",
              "Content-Type: text/plain; charset=utf-8",
              "",
              "",
              '👍']) + "\r\n"
+        ok_response = ok_response.encode("utf-8")
+        ok_printer = m.submodules.ok_printer = Printer(ok_response)
+        connect(m, ok_printer.output, response_mux.input[0])
 
-        response = response.encode("utf-8")
+        not_found_response = "\r\n".join(
+            ["HTTP/1.0 404 Not Found",
+             "Host: Fomu",
+             "Content-Type: text/plain; charset=utf-8",
+             "",
+             "",
+             '👎']) + "\r\n"
+        not_found_response = not_found_response.encode("utf-8")
+        not_found_printer = m.submodules.not_found_printer = Printer(not_found_response)
+        connect(m, not_found_printer.output, response_mux.input[1])
 
-        printer = m.submodules.printer = Printer(response)
-
-        connect(m, printer.output, self.session.outbound.data)
+        m.d.comb += response_mux.select.eq(0)
 
         with m.FSM():
             with m.State("idle"):
@@ -66,12 +80,12 @@ class SimpleLedHttp(Component):
                     # when we have completed reading the request
                     # OR if the inbound session becomes inactive.
                     m.next = "writing"
-                    m.d.sync += printer.en.eq(1)  # one-shot
+                    m.d.sync += ok_printer.en.eq(1)  # one-shot
             with m.State("writing"):
-                m.d.sync += printer.en.eq(0)
+                m.d.sync += ok_printer.en.eq(0)
                 m.d.sync += self.session.outbound.active.eq(1)
                 m.next = "writing"
-                with m.If(printer.done):
+                with m.If(ok_printer.done):
                     m.next = "idle"
                     m.d.sync += self.session.outbound.active.eq(0)
 
