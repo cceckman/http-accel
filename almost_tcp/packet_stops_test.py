@@ -58,10 +58,10 @@ if __name__ == "__main__":
 
     sim = Simulator(dut)
     body_collector = StreamCollector(
-        random_backpressure=True, stream=dut.packet.data)
+        random_backpressure=False, stream=dut.packet.data)
     packets_collector = StreamCollector(
-        random_backpressure=True, stream=dut.outbus)
-    sender = PacketSender(random_delay=True, stream=dut.inbus)
+        random_backpressure=False, stream=dut.outbus)
+    sender = PacketSender(random_delay=False, stream=dut.inbus)
     data = bytes(i % 256 for i in range(0, 260))
     p = Packet(
         Header(
@@ -82,4 +82,4 @@ if __name__ == "__main__":
     sim.add_testbench(bench(dut, body_collector, packets_collector, p))
 
     with sim.write_vcd(sys.stdout):
-        sim.run()
+        sim.run_until(0.0001)

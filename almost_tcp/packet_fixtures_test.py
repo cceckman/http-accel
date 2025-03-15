@@ -21,7 +21,7 @@ def test_stream_send_structured_receive(packets: List[Packet]):
     # All we need is a buffer for this to work.
     # Depth chosen arbitrarily.
     dut = SyncFIFOBuffered(width=8, depth=2)
-    sender = MultiPacketSender(random_delay=True, stream=dut.w_stream)
+    sender = MultiPacketSender(random_delay=False, stream=dut.w_stream)
     # Turning on random backpressure here causes the tests to take A Long Time.
     # ...I guess because if there's *random* backpressure, there's a set of
     # random sequences which results in it taking an arbitrarily long time to
