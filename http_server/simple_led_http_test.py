@@ -2,7 +2,7 @@ import sys
 from amaranth.sim import Simulator
 
 from simple_led_http import SimpleLedHttp
-from almost_tcp.packet_fixtures import StreamCollector
+from stream_fixtures import StreamCollector
 
 
 def test_ok_handling():

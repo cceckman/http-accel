@@ -6,6 +6,8 @@ from almost_tcp.message_host import Packet, Header, Flags
 from typing import List
 from functools import reduce
 from hypothesis import strategies as st
+from stream_fixtures import StreamCollector, StreamSender
+
 
 __all__ = ["arbitrary_packet", "StreamCollector",
            "PacketCollector", "PacketSender", "MultiPacketSender"]
@@ -37,73 +39,6 @@ def arbitrary_packet(
 
 # Apparently it doesn't work to register within an import. Boo.
 # st.register_type_strategy(Packet, arbitrary_packet())
-
-
-class StreamCollector:
-    """
-    Collects raw data from an Amaranth data stream.
-    """
-
-    # Set to true to apply random backpressure.
-    # Otherwise, the stream is always ready.
-    random_backpressure: bool = False
-
-    body: bytes = bytes()
-
-    def __init__(self, stream, random_backpressure=False):
-        super().__init__()
-        self.random_backpressure = random_backpressure
-        self._stream = stream
-
-    def is_ready(self):
-        """
-        Return a ready value, possibly incorporating random backpressure.
-        """
-
-        if self.random_backpressure:
-            return random.randint(0, 1)
-        else:
-            return 1
-
-    def collect(self):
-        stream = self._stream
-
-        async def collector(ctx):
-            ready = self.is_ready()
-            ctx.set(stream.ready, ready)
-            async for clk_edge, rst_value, valid, payload in ctx.tick().sample(
-                    stream.valid, stream.payload):
-                if rst_value or (not clk_edge):
-                    continue
-                if ready == 1 and valid == 1:
-                    # We just transferred a payload byte.
-                    self.body = self.body + bytes([payload])
-                    ready = self.is_ready()
-                else:
-                    # Don't become un-ready until we transver a payload byte.
-                    ready = ready | self.is_ready()
-                ctx.set(stream.ready, ready)
-        return collector
-
-    def assert_eq(self, other):
-        if isinstance(other, str):
-            other = other.encode("utf-8")
-        elif isinstance(other, bytes):
-            pass
-        else:
-            raise ValueError("other must be a string or byte array")
-
-        got = self.body
-        want = other
-
-        debug = f"got body:\n{got}\nwant body:\n{want}"
-
-        assert len(got) == len(want), debug
-        for b in range(len(want)):
-            assert got[b] == want[b], debug
-
-    def __len__(self):
-        return len(self.body)
 
 
 class PacketCollector:
@@ -277,37 +212,16 @@ class MultiPacketSender:
         """
         Transmit the given packets serially into stream.
         """
-        stream = self._stream
         byte_arrays = [p.encode() for p in packets]
         b = reduce(lambda a, b: a + b, byte_arrays, bytes())
         self.done = False
 
+        stream_sender = StreamSender(
+            self._stream, random_delay=self.random_delay)
+
         async def sender(ctx):
-            ctx.set(stream.valid, 0)
-            if len(b) == 0:
-                return
-
-            counter = 0
-            valid = self.is_valid()
-            ctx.set(stream.valid, valid)
-            ctx.set(stream.payload, b[counter])
-            async for clk_edge, rst_value, ready in (
-                    ctx.tick().sample(stream.ready)):
-                if ready == 1 and valid == 1:
-                    # We just transferred the byte.
-                    counter += 1
-                    valid = self.is_valid()
-                else:
-                    # Don't become in-valid until the byte is transferred.
-                    valid = valid | self.is_valid()
-                # Update the payload:
-                if counter >= len(b):
-                    break
-                ctx.set(stream.payload, b[counter])
-                ctx.set(stream.valid, valid)
-            # Break: end of stream.
-            ctx.set(stream.valid, 0)
-
+            inner_sender = stream_sender.send_passive(b)
+            await inner_sender(ctx)
             self.done = True
 
         return sender
