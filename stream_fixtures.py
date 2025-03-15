@@ -124,7 +124,6 @@ class StreamSender:
             counter = 0
             # send_len = len(data)
             for datum in data:
-                # sys.stderr.write(f"writing byte {counter}/{send_len}\n")
                 valid = self.is_valid()
                 ctx.set(stream.valid, valid)
                 ctx.set(stream.payload, datum)
@@ -138,7 +137,6 @@ class StreamSender:
                         # Don't become in-valid until the byte is transferred.
                         valid = valid | self.is_valid()
                 counter += 1
-            # sys.stderr.write("writing done\n")
             # All done with the data input.
             ctx.set(stream.valid, 0)
             self.done = True
