@@ -3,16 +3,13 @@ Next-level of connection management: sessions, not just backpressure
 
 """
 
-from amaranth import Module, Signal, unsigned, Const
-from amaranth.lib.wiring import Component, In, Out, Signature
+from amaranth.lib.wiring import In, Out, Signature
 from amaranth.lib import stream
-from amaranth.lib.data import UnionLayout, ArrayLayout, Struct
-from amaranth.lib.fifo import SyncFIFOBuffered
 
 
 class SessionSignature(Signature):
     """
-    Signature of a *session*: handshake'd data.
+    Signature of a *session*: a reusable data stream interface.
 
 
     Attributes
@@ -31,13 +28,25 @@ class SessionSignature(Signature):
 
 class BidiSessionSignature(Signature):
     """
-    - Start with inbound.active raised: "new request"
-    - Wait for outbound.active to be raised before inputting data
-    - Data flows
-    - Wait until outbound data flushed before deasserting session_active
-    - Early termination (e.g. 400): flush inbound data until inbound.session_active deasserted
-    - Both zero --> reset state
+    A bidirectional session-oriented data stream.
+    A pair of SessionSignatures that control inbound and outbound data,
+    and provide a bidirectional handshake for starting a new session.
 
+    The sequence of usage is as follows:
+
+    - At reset, inbound.active and outbound.active are both zero.
+    - A new session starts with inbound.active raised
+    - The session manager wait for outbound.active to be raised before
+      passing data into inbound.data. inbound.data and outbound.data
+      perform flow control as usual
+    - Data flows for a while
+    - At the end of a session, inbound.active OR outbound.active deasserts,
+      after all data has been consumed (i.e. data.valid goes low for
+      the final time)
+    - The still-active end must continue consuming data until
+      the other .active goes low
+    - Once both .active are low, the session has been reset, and a new session
+      can proceed
     """
 
     def __init__(self):
