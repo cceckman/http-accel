@@ -26,7 +26,7 @@ class Flags(Struct):
     end: 1
 
     # Direction marker: 0 for "client to server", 1 for "server to client"
-    direction: 1
+    to_host: 1
 
     # Additional bits for the future.
     unused: 5
@@ -91,10 +91,18 @@ class StreamStop(Component):
     bus: Bus interface
     """
 
-    session: Out(session.BidiSessionSignature().flipped())
-    bus: BusStopSignature()
+    stop: Out(session.BidiSessionSignature().flip())
+    bus: Out(BusStopSignature())
+
+    def __init__(self, stream_id):
+        super().__init__()
+        self._stream_id = stream_id
 
     def elaborate(self, platform):
         m = Module()
+
+        # TODO: Stub, to get sim passing
+        toggle = Signal(1)
+        m.d.sync += toggle.eq(~toggle)
 
         return m
