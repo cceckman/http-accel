@@ -112,9 +112,38 @@ class StreamSender:
         else:
             return 1
 
+    def send_active(self, data: Iterable[int]):
+        """
+        Returns a coroutine that drives the simulation while sending the
+        provided data.
+        The provided coroutine returns when all the data are sent.
+        """
+        stream = self._stream
+        self.done = False
+
+        async def sender(ctx):
+            for datum in data:
+                valid = self.is_valid()
+                while True:
+                    ctx.set(stream.valid, valid)
+                    ctx.set(stream.payload, datum)
+                    ready = ctx.get(stream.ready)
+                    await ctx.tick()
+                    if ready == 1 and valid == 1:
+                        # Just transferred a byte.
+                        # Go to the next datum.
+                        break
+                    else:
+                        # Have a chance at becoming valid.
+                        valid = valid | self.is_valid()
+            # All done with the data input.
+            ctx.set(stream.valid, 0)
+            self.done = True
+        return sender
+
     def send_passive(self, data: Iterable[int]):
         """
-        Transmit the given packets serially into stream.
+        Returns a coroutine that transmit the given packets serially into stream.
         Does not drive the SUT.
         """
         stream = self._stream
