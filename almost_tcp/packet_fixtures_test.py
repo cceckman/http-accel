@@ -20,7 +20,7 @@ def test_stream_send_structured_receive(packets: List[Packet]):
     sender = MultiPacketSender(random_delay=True, stream=dut.w_stream)
     # Turning on random backpressure here causes the tests to take A Long Time.
     # ...I guess because if there's *random* backpressure, there's a set of
-    # random sequences which reusilt in it taking an arbitrarily long time to
+    # random sequences which results in it taking an arbitrarily long time to
     # complete. Though, that's *arbitrary*, not *random*.
     # TODO: Double-check on packpressure
     #

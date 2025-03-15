@@ -79,7 +79,7 @@ class StreamCollector:
                     self.body = self.body + bytes([payload])
                     ready = self.is_ready()
                 else:
-                    # Maybe become ready, don't become un-ready.
+                    # Don't become un-ready until we transver a payload byte.
                     ready = ready | self.is_ready()
                 ctx.set(stream.ready, ready)
         return collector
@@ -149,7 +149,7 @@ class PacketCollector:
                     data = data + bytes([payload])
                     ready = self.is_ready()
                 else:
-                    # Become ready, but don't become un-ready.
+                    # Don't become un-ready until we transfer a payload byte
                     ready = ready | self.is_ready()
                 ctx.set(stream.ready, ready)
 
@@ -297,7 +297,7 @@ class MultiPacketSender:
                     counter += 1
                     valid = self.is_valid()
                 else:
-                    # Maybe ready the byte.
+                    # Don't become in-valid until the byte is transferred.
                     valid = valid | self.is_valid()
                 # Update the payload:
                 if counter >= len(b):
