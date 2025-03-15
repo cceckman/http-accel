@@ -52,8 +52,8 @@ def test_ok_handling():
 
     sim.add_testbench(driver)
 
-    collector = StreamCollector()
-    sim.add_process(collector.collect(dut.session.outbound.data))
+    collector = StreamCollector(stream=dut.session.outbound.data)
+    sim.add_process(collector.collect())
 
     # Doesn't appear to be a way to _remove_ a testbench;
     # I guess .reset() is "just" to allow a different initial state?

@@ -1,10 +1,14 @@
 from amaranth.lib.fifo import SyncFIFOBuffered
 from amaranth.sim import Simulator
-from hypothesis import given
-from packet_fixtures import MultiPacketSender, PacketCollector
+from hypothesis import given, strategies
+from packet_fixtures import (
+    MultiPacketSender, PacketCollector, arbitrary_packet)
 from message_host import Packet
 from typing import List
 import sys
+
+# This doesn't work via import, apparently
+strategies.register_type_strategy(Packet, arbitrary_packet())
 
 
 @given(packets=...)

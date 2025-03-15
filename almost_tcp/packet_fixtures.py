@@ -2,7 +2,7 @@
 Test fixtures for sending and receiving packets and streams.
 """
 import random
-from message_host import Packet, Header, Flags
+from almost_tcp.message_host import Packet, Header, Flags
 from typing import List
 from functools import reduce
 from hypothesis import strategies as st
@@ -35,7 +35,8 @@ def arbitrary_packet(
     return Packet(header=header, body=body)
 
 
-st.register_type_strategy(Packet, arbitrary_packet())
+# Apparently it doesn't work to register within an import. Boo.
+# st.register_type_strategy(Packet, arbitrary_packet())
 
 
 class StreamCollector:
