@@ -7,11 +7,14 @@ Each packet includes a short header: flags, a session ID, and a body-length.
 """
 
 from amaranth import Module, Signal, unsigned, Const
-from amaranth.lib.wiring import Component, In, Out, Signature
+from amaranth.lib.wiring import Component, In, Out, Signature, connect
 from amaranth.lib import stream
 from amaranth.lib.data import UnionLayout, ArrayLayout, Struct
 from amaranth.lib.fifo import SyncFIFOBuffered
+
 import session
+from http_server.stream_mux import StreamMux
+from http_server.stream_demux import StreamDemux
 
 
 class Flags(Struct):
@@ -37,14 +40,15 @@ class Header(Struct):
     Layout of a Not TCP header.
     """
 
-    flags: Flags
-
-    # Session identifier.
-    session: 8
+    # Stream identifier.
+    stream: 8
 
     # Length of the body following the header
-    # (bytes to the next header)
+    # (# of bytes to the next header)
     length: 8
+
+    # Session-state indicators
+    flags: Flags
 
 
 class BusStopSignature(Signature):
@@ -85,6 +89,12 @@ class StreamStop(Component):
     """
     A stop for a Not TCP stream on the local bus.
 
+    NOTE: the Not TCP bus currently uses broadcast sends; it is not a ring bus.
+
+    Parameters
+    ----------
+    stream_id: stream ID to match / generate packets with
+
     Attributes
     ----------
     session: Inner interface
@@ -101,8 +111,37 @@ class StreamStop(Component):
     def elaborate(self, platform):
         m = Module()
 
-        # TODO: Stub, to get sim passing
-        toggle = Signal(1)
-        m.d.sync += toggle.eq(~toggle)
+        bus_buffer = m.submodules.bus_buffer = SyncFIFOBuffered(
+            width=8, depth=4)
+        # Each of these is big enough to buffer one full packet.
+        input_buffer = m.submodules.input_buffer = SyncFIFOBuffered(
+            width=8, depth=256)
+        output_buffer = m.submodules.output_buffer = SyncFIFOBuffered(
+            witdh=8, depth=256)
+
+        connect(m, bus_buffer.r_stream, self.bus.downstream)
+        connect(m, self.session.outbound.data, output_buffer.w_stream)
+        connect(m, input_buffer.r_stream, self.session.inbound.data)
+
+        # TODO: Muxes for inbound connections?
+        # Or connect as part of the state machines?
+
+        # Default state: don't transfer any data.
+        m.d.comb += [
+            self.session.inbound.active.eq(0),
+            self.bus_buffer.w_stream.valid.eq(0),
+            self.input_buffer.r_stream.ready.eq(0),
+            self.output_buffer.r_stream.ready.eq(0),
+        ]
+
+
+        ## INBOUND DATA HANDLING
+        mixed_view = UnionLayout(
+            {
+                "bytes": ArrayLayout(unsigned(8), 10),
+                "header": Header,
+            })
+        network = Signal(Header)
+        pun = mixed_view(network)
 
         return m

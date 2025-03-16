@@ -12,7 +12,7 @@ class Header:
     end: bool
     to_host: bool
 
-    session: int
+    stream: int
     length: int
 
     def __len__(cls):
@@ -23,15 +23,15 @@ class Header:
         flags += 1 if self.start else 0
         flags += 2 if self.end else 0
         flags += 4 if self.to_host else 0
-        return struct.pack("BBB", flags, self.session, self.length)
+        return struct.pack("BBB", self.stream, self.length, flags)
 
     def from_bytes(buffer: bytes) -> "Header":
-        (flags, session, length) = struct.unpack("BBB", buffer)
+        (stream, length, flags) = struct.unpack("BBB", buffer)
         return Header(
             start=bool(flags & 1),
             end=bool(flags & 2),
             to_host=bool(flags & 4),
-            session=session,
+            stream=stream,
             length=length,
         )
 
@@ -46,17 +46,17 @@ class Packet:
     end: bool = False
     to_host: bool = False
 
-    session: int = 0
+    stream: int = 0
     body: bytes = bytes()
 
     def __len__(self):
         return len(Header) + len(self.body)
 
     def header(self) -> Header:
-        assert self.session >= 0
-        assert self.session < 256
+        assert self.stream >= 0
+        assert self.stream < 256
 
-        return Header(self.start, self.end, self.to_host, self.session,
+        return Header(self.start, self.end, self.to_host, self.stream,
                       length=len(self.body))
 
     def to_bytes(self) -> bytes:

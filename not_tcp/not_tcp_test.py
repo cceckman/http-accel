@@ -23,25 +23,25 @@ def test_single_stop():
     send_bus = StreamSender(dut.bus.upstream)
 
     # The packet sequence we'll use:
-    # Host-to-device, starting session 2
-    p1 = host.Packet(start=True, session=2,
+    # Host-to-device, starting stream 2
+    p1 = host.Packet(start=True, stream=2,
                      body=bytes(i for i in range(0, 10)))
-    # Host-to-device, starting and ending session 3
-    p2 = host.Packet(start=True, end=True, session=3,
+    # Host-to-device, starting and ending stream 3
+    p2 = host.Packet(start=True, end=True, stream=3,
                      body=bytes(i for i in range(10, 15)))
-    # Host-to-device, middle of session 2
-    p3 = host.Packet(session=2, body=bytes(i for i in range(15, 18)))
-    # device-to-host, session 2; start and end markers, it's all the data
-    p4 = host.Packet(start=True, end=True, session=2,
+    # Host-to-device, middle of stream 2
+    p3 = host.Packet(stream=2, body=bytes(i for i in range(15, 18)))
+    # device-to-host, stream 2; start and end markers, it's all the data
+    p4 = host.Packet(start=True, end=True, stream=2,
                      body=bytes(i for i in range(18, 28)))
-    # host-to-device, session 2: end marker only
-    p5 = host.Packet(end=True, session=2, body=bytes())
+    # host-to-device, stream 2: end marker only
+    p5 = host.Packet(end=True, stream=2, body=bytes())
 
     async def driver(ctx):
-        # Just the header for p1 should start the session:
+        # Just the header for p1 should start the stream:
         await send_bus.send_active(p1.header().to_bytes())(ctx)
         await ctx.tick().until(dut.stop.inbound.active)
-        # Accept the session:
+        # Accept the stream:
         ctx.set(dut.stop.outbound.active, 1)
         # And finish p1's body
         await send_bus.send_active(p1.body)
@@ -52,7 +52,7 @@ def test_single_stop():
         await send_bus.send_active(p3.to_bytes())(ctx)
         # Send p4 on the return path:
         await send_stop.send_active(p4.body)(ctx)
-        # And mark the session as closed:
+        # And mark the stream as closed:
         ctx.set(dut.stop.outbound.active, 0)
 
         # And then send p5 to hang up the inbound path:
@@ -69,13 +69,13 @@ def test_single_stop():
         sim.run_until(0.000100)  # 100us
 
     # After simulation is complete...
-    # The stop should have received all the packets for this session:
+    # The stop should have received all the packets for this stream:
     collect_stop.assert_eq(
         p1.body + p3.body + p5.body
     )
-    # And the bus should have received the packet for session 3
+    # And the bus should have received the packet for stream 3
     # (which continued around the bus),
-    # then the packet sent for session 2 (which was generated)
+    # then the packet sent for stream 2 (which was generated)
     collect_bus.assert_eq(
         p2.to_bytes() + p4.to_bytes()
     )
