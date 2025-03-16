@@ -13,6 +13,7 @@ from amaranth.lib.data import UnionLayout, ArrayLayout, Struct
 from amaranth.lib.fifo import SyncFIFOBuffered
 
 import session
+from stream_utils import LimitForwarder
 from http_server.stream_mux import StreamMux
 from http_server.stream_demux import StreamDemux
 
@@ -101,8 +102,8 @@ class StreamStop(Component):
     bus: Bus interface
     """
 
-    stop: Out(session.BidiSessionSignature().flip())
-    bus: Out(BusStopSignature())
+    stop: Out(session.BidiSessionSignature())
+    bus: In(BusStopSignature())
 
     def __init__(self, stream_id):
         super().__init__()
@@ -111,37 +112,92 @@ class StreamStop(Component):
     def elaborate(self, platform):
         m = Module()
 
-        bus_buffer = m.submodules.bus_buffer = SyncFIFOBuffered(
-            width=8, depth=4)
         # Each of these is big enough to buffer one full packet.
         input_buffer = m.submodules.input_buffer = SyncFIFOBuffered(
             width=8, depth=256)
         output_buffer = m.submodules.output_buffer = SyncFIFOBuffered(
-            witdh=8, depth=256)
+            width=8, depth=256)
 
-        connect(m, bus_buffer.r_stream, self.bus.downstream)
-        connect(m, self.session.outbound.data, output_buffer.w_stream)
-        connect(m, input_buffer.r_stream, self.session.inbound.data)
-
-        # TODO: Muxes for inbound connections?
-        # Or connect as part of the state machines?
+        connect(m, self.stop.outbound.data, output_buffer.w_stream)
+        connect(m, input_buffer.r_stream, self.stop.inbound.data)
+        input_limiter = m.submodules.input_limiter = LimitForwarder()
+        output_limiter = m.submodules.output_limiter = LimitForwarder()
 
         # Default state: don't transfer any data.
         m.d.comb += [
-            self.session.inbound.active.eq(0),
-            self.bus_buffer.w_stream.valid.eq(0),
-            self.input_buffer.r_stream.ready.eq(0),
-            self.output_buffer.r_stream.ready.eq(0),
+            self.stop.inbound.active.eq(0),
+            input_buffer.r_stream.ready.eq(0),
+            output_buffer.r_stream.ready.eq(0),
+            input_limiter.start.eq(0),
+            output_limiter.start.eq(0),
         ]
+        connect(m, input_limiter.outbound, input_buffer.w_stream)
+        connect(m, output_buffer.r_stream, output_limiter.inbound)
 
+        # We get "most of a packet": everything but the stream ID.
+        read_len = Signal(8)
+        flags_layout = UnionLayout({"bytes": unsigned(8), "flags": Flags})
+        flags = Signal(flags_layout)
 
-        ## INBOUND DATA HANDLING
-        mixed_view = UnionLayout(
-            {
-                "bytes": ArrayLayout(unsigned(8), 10),
-                "header": Header,
-            })
-        network = Signal(Header)
-        pun = mixed_view(network)
+        with m.FSM(name="read"):
+            bus = self.bus.upstream
+            # TODO: Discard data when session is not current
+            with m.State("read-len"):
+                m.next = "read-len"
+                m.d.comb += bus.ready.eq(1)
+                with m.If(bus.valid):
+                    m.d.sync += read_len.eq(bus.payload)
+                    m.next = "read-flags"
+            with m.State("read-flags"):
+                m.next = "read-flags"
+                m.d.comb += bus.ready.eq(1)
+                with m.If(bus.valid):
+                    # At the cycle edge, capture the flags byte...
+                    m.d.sync += flags.bytes.eq(bus.payload)
+                    # And trigger the input-limiter to begin starting with
+                    # the byte following that.
+                    m.d.comb += input_limiter.count.eq(read_len)
+                    m.d.comb += input_limiter.start.eq(1)
+                    connect(m, self.bus.upstream, input_limiter.inbound)
+                    # TODO: Ignore / block / forward-to-null if session is inactive
+                    m.next = "read-body"
+            with m.State("read-body"):
+                m.next = "read-body"
+                connect(m, self.bus.upstream, input_limiter.inbound)
+                m.d.comb += input_limiter.start.eq(0)
+                with m.If(input_limiter.done):
+                    m.next = "read-len"
 
+        with m.FSM(name="write"):
+            bus = self.bus.downstream
+            write_len = Signal(8)
+
+            with m.State("write-len"):
+                m.next = "write-len"
+                with m.If(bus.ready & output_buffer.r_stream.valid):
+                    # The output is ready, and we have data to send.
+                    # Lock in the level as the length of this packet
+                    # and write that length.
+                    m.d.sync += write_len.eq(output_buffer.r_level)
+                    m.d.comb += bus.payload.eq(output_buffer.r_level)
+                    m.d.comb += bus.valid.eq(1)
+                    m.next = "write-flags"
+            with m.State("write-flags"):
+                m.next = "write-flags"
+                # TODO: Session state
+                with m.If(bus.ready):
+                    m.d.comb += [
+                        bus.payload.eq(0b111),
+                        bus.valid.eq(1),
+                    ]
+                    m.d.comb += [
+                        output_limiter.count.eq(write_len),
+                        output_limiter.start.eq(1),
+                    ]
+                    m.next = "write-body"
+            with m.State("write-body"):
+                m.next = "write-body"
+                connect(m, output_limiter.outbound, bus)
+                with m.If(output_limiter.done):
+                    m.next = "write-len"
         return m
