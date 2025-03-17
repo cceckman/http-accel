@@ -40,6 +40,7 @@ def test_ididx():
 
         while not sender.done:
             await ctx.tick()
+        await ctx.tick()
         assert ctx.get(dut.accepted)
 
     sim.add_testbench(driver)
@@ -72,6 +73,6 @@ def test_no_match():
 
 
 if __name__ == "__main__":
-    # test_finds_substring()
-    # test_ididx()
+    test_finds_substring()
+    test_ididx()
     test_no_match()
