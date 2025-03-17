@@ -1,4 +1,4 @@
-from amaranth import Module, Signal, Array
+from amaranth import Module, Signal, Array, Const
 from amaranth.lib.wiring import In, Out, Component
 from amaranth.lib import stream
 from capitalizer import Capitalizer
@@ -60,37 +60,32 @@ class StringContainsMatch(Component):
                     c.eq(capitalizer.output),
             ]
 
-        import math
-        size = math.ceil(math.log2(len(self._message))) + 1
-        idx = Signal(size)
+        m.d.comb += self.input.ready.eq(Const(1))
 
-        with m.FSM():
-            with m.State("matching"):
-                m.d.comb += [
-                    self.input.ready.eq(1),
-                    self.accepted.eq(0),
-                ]
-                m.next = "matching"
-                with m.If(self.input.valid & ~self.reset):
-                    # Consume one byte; we're already holding "ready".
-                    with m.If(c == self._message[idx]):
-                        with m.If(idx < len(self._message) - 1):
-                            # Accept this character and move on.
-                            m.d.sync += idx.eq(idx + 1)
-                        with m.Else():
-                            # At the end of the string.
-                            m.next = "accepted"
-                    with m.Else():
-                        # Restart search
-                        m.d.sync += idx.eq(0)
-            with m.State("accepted"):
-                m.next = "accepted"
-                m.d.comb += [
-                    self.accepted.eq(1), 
-                    self.input.ready.eq(0)
-                ]
-                m.d.sync += idx.eq(0)
-                with m.If(self.reset):
-                    m.next = "matching"
+        shift_reg = [Signal(8) for _ in range(len(self._message))]
 
+        with m.If(self.reset):
+            m.d.sync += self.accepted.eq(Const(0))
+            for i in range(len(self._message)):
+                m.d.sync += shift_reg[i].eq(0)
+        with m.Elif(self.input.valid):
+            for i in range(len(self._message)-2,-1,-1):
+                m.d.sync += shift_reg[i+1].eq(shift_reg[i])
+            m.d.sync += shift_reg[0].eq(c)
+
+        matched = [Signal(1) for _ in range(len(self._message))]
+        for i in range(len(self._message)):
+            m.d.comb += matched[i].eq(shift_reg[i] == self._message[len(self._message)-i-1])
+
+        # Note: Doing a linear reduction here. Could be a problem for very long
+        #       matches. If it ends up being an issue, switch to a tree.
+        matched_chain = [Signal(1) for _ in range(len(self._message)+1)]
+        m.d.comb += matched_chain[0].eq(Const(1))
+        for i in range(len(self._message)):
+            m.d.comb += matched_chain[i+1].eq(matched_chain[i] & matched[i])
+
+        # Latch acceptance
+        with m.If(matched_chain[len(self._message)]):
+            m.d.sync += self.accepted.eq(1)
+        
         return m
