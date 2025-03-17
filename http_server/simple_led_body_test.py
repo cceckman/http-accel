@@ -65,7 +65,7 @@ def test_send_two_bodies():
             assert ctx.get(dut.blue) == 0x3C
             await ctx.tick()
 
-        # After the 2nd body is accepted, should get the 2nd inptu
+        # After the 2nd body is accepted, should get the 2nd input
         assert ctx.get(dut.red) == 0x4D
         assert ctx.get(dut.green) == 0x5E
         assert ctx.get(dut.blue) == 0x6F
