@@ -91,6 +91,7 @@ class SimpleLedBody(Component):
                     m.next = "reset"
                 with m.If(self.input.valid): 
                     with m.If(valid_hex & (idx < 6)):
+                        m.next = "matching"
                         m.d.sync += idx.eq(idx+1)
                         digit = pending[idx >> 1]
                         with m.If(idx & 1):
