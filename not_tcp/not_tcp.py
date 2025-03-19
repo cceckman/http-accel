@@ -126,8 +126,6 @@ class StreamStop(Component):
         # Default state: don't transfer any data.
         m.d.comb += [
             self.stop.inbound.active.eq(0),
-            input_buffer.r_stream.ready.eq(0),
-            output_buffer.r_stream.ready.eq(0),
             input_limiter.start.eq(0),
             output_limiter.start.eq(0),
         ]
@@ -164,7 +162,6 @@ class StreamStop(Component):
                     # the byte following that.
                     m.d.comb += input_limiter.count.eq(read_len)
                     m.d.comb += input_limiter.start.eq(1)
-                    connect(m, self.bus.upstream, input_limiter.inbound)
                     # TODO: Ignore / block / forward-to-null
                     # if session is inactive
                     m.next = "read-body"

@@ -21,6 +21,11 @@ class LimitForwarder(Component):
         m = Module()
 
         countdown = Signal(9)
+        # No transfer by default:
+        m.d.comb += [
+                self.inbound.ready.eq(0),
+                self.outbound.valid.eq(0),
+        ]
 
         with m.FSM():
             with m.State("idle"):

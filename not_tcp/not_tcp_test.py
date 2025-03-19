@@ -40,11 +40,12 @@ def test_single_stop():
     async def driver(ctx):
         # Just the header for p1 should start the stream:
         await send_bus.send_active(p1.header().to_bytes())(ctx)
-        await ctx.tick().until(dut.stop.inbound.active)
+        # TODO: wait until "accepted"
+        # await ctx.tick().until(dut.stop.inbound.active)
         # Accept the stream:
         ctx.set(dut.stop.outbound.active, 1)
         # And finish p1's body
-        await send_bus.send_active(p1.body)
+        await send_bus.send_active(p1.body)(ctx)
 
         # Feed in p2:
         await send_bus.send_active(p2.to_bytes())(ctx)
@@ -60,7 +61,7 @@ def test_single_stop():
 
         # Wait for everything to be flushed:
         await ctx.tick().until(
-            ~dut.stop.inbound.active & ~dut.downstream.valid)
+            ~dut.stop.inbound.active & ~dut.bus.downstream.valid)
 
     sim.add_testbench(driver)
     sim.add_clock(1e-6)
@@ -70,9 +71,9 @@ def test_single_stop():
 
     # After simulation is complete...
     # The stop should have received all the packets for this stream:
-    # collect_stop.assert_eq(
-    #     p1.body + p3.body + p5.body
-    # )
+    collect_stop.assert_eq(
+        p1.body + p3.body + p5.body
+    )
     # And the bus should have received the packet for stream 3
     # (which continued around the bus),
     # then the packet sent for stream 2 (which was generated)

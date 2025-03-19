@@ -60,4 +60,4 @@ class Packet:
                       length=len(self.body))
 
     def to_bytes(self) -> bytes:
-        return self.header.to_bytes() + self.body
+        return self.header().to_bytes() + self.body
