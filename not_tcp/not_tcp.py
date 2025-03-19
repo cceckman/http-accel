@@ -138,10 +138,16 @@ class StreamStop(Component):
         read_len = Signal(8)
         flags_layout = UnionLayout({"bytes": unsigned(8), "flags": Flags})
         flags = Signal(flags_layout)
+        stream = Signal(8)
 
         with m.FSM(name="read"):
             bus = self.bus.upstream
-            # TODO: Discard data when session is not current
+            with m.State("read-stream"):
+                m.next = "read-stream"
+                m.d.comb += bus.ready.eq(1)
+                with m.If(bus.valid):
+                    m.d.sync += stream.eq(bus.payload)
+                    m.next = "read-len"
             with m.State("read-len"):
                 m.next = "read-len"
                 m.d.comb += bus.ready.eq(1)
@@ -159,7 +165,8 @@ class StreamStop(Component):
                     m.d.comb += input_limiter.count.eq(read_len)
                     m.d.comb += input_limiter.start.eq(1)
                     connect(m, self.bus.upstream, input_limiter.inbound)
-                    # TODO: Ignore / block / forward-to-null if session is inactive
+                    # TODO: Ignore / block / forward-to-null
+                    # if session is inactive
                     m.next = "read-body"
             with m.State("read-body"):
                 m.next = "read-body"
@@ -172,14 +179,20 @@ class StreamStop(Component):
             bus = self.bus.downstream
             write_len = Signal(8)
 
-            with m.State("write-len"):
-                m.next = "write-len"
+            with m.State("write-stream"):
+                m.next = "write-stream"
                 with m.If(bus.ready & output_buffer.r_stream.valid):
                     # The output is ready, and we have data to send.
-                    # Lock in the level as the length of this packet
-                    # and write that length.
+                    # Lock in the level as the length of this packet.
                     m.d.sync += write_len.eq(output_buffer.r_level)
-                    m.d.comb += bus.payload.eq(output_buffer.r_level)
+                    m.d.comb += bus.payload.eq(self._stream_id)
+                    m.d.comb += bus.valid.eq(1)
+                    m.next = "write-len"
+            with m.State("write-len"):
+                m.next = "write-len"
+                with m.If(bus.ready):
+                    # Write the length.
+                    m.d.comb += bus.payload.eq(write_len)
                     m.d.comb += bus.valid.eq(1)
                     m.next = "write-flags"
             with m.State("write-flags"):
