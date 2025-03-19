@@ -60,10 +60,10 @@ class SimpleLedHttp(Component):
         led_body_handler = m.submodules.led_body_handler = SimpleLedBody()
         connect(m, led_body_handler.input, parser_demux.outs[HTTP_PARSER_LED_BODY])
         m.d.comb += [
-            self.red.eq(led_body_handler.red),
-            self.green.eq(led_body_handler.green),
-            self.blue.eq(led_body_handler.blue),
-        ]
+                self.red.eq(led_body_handler.red),
+                self.green.eq(led_body_handler.green),
+                self.blue.eq(led_body_handler.blue),
+                ]
 
         # Last parser is just a sink
         HTTP_PARSER_SINK = 3
@@ -74,35 +74,45 @@ class SimpleLedHttp(Component):
         connect(m, response_mux.out, self.session.outbound.data)
 
         ok_response = "\r\n".join(
-            ["HTTP/1.0 200 OK",
-             "Host: Fomu",
-             "Content-Type: text/plain; charset=utf-8",
-             "",
-             "",
-             '👍']) + "\r\n"
+                ["HTTP/1.0 200 OK",
+                    "Host: Fomu",
+                    "Content-Type: text/plain; charset=utf-8",
+                    "",
+                    "",
+                    '👍']) + "\r\n"
         ok_response = ok_response.encode("utf-8")
         ok_printer = m.submodules.ok_printer = Printer(ok_response)
         RESPONSE_OK = 0
         connect(m, ok_printer.output, response_mux.input[RESPONSE_OK])
+        send_ok = [
+                response_mux.select.eq(RESPONSE_OK),
+                parser_demux.select.eq(HTTP_PARSER_SINK),
+                ok_printer.en.eq(1),
+        ]
 
         not_found_response = "\r\n".join(
-            ["HTTP/1.0 404 Not Found",
-             "Host: Fomu",
-             "Content-Type: text/plain; charset=utf-8",
-             "",
-             "",
-             '👎']) + "\r\n"
+                ["HTTP/1.0 404 Not Found",
+                    "Host: Fomu",
+                    "Content-Type: text/plain; charset=utf-8",
+                    "",
+                    "",
+                    '👎']) + "\r\n"
         not_found_response = not_found_response.encode("utf-8")
         not_found_printer = m.submodules.not_found_printer = Printer(not_found_response)
         RESPONSE_404 = 1
         connect(m, not_found_printer.output, response_mux.input[RESPONSE_404])
+        send_404 = [
+                response_mux.select.eq(RESPONSE_404),
+                parser_demux.select.eq(HTTP_PARSER_SINK),
+                not_found_printer.en.eq(1),
+        ]
 
         with m.FSM():
             with m.State("reset"):
                 m.d.comb += [
-                    led_start_matcher.reset.eq(1),
-                    skip_headers.reset.eq(1),
-                    led_body_handler.reset.eq(1),
+                        led_start_matcher.reset.eq(1),
+                        skip_headers.reset.eq(1),
+                        led_body_handler.reset.eq(1),
                 ]
                 m.next = "idle"
             with m.State("idle"):
@@ -118,11 +128,7 @@ class SimpleLedHttp(Component):
                 # Input finished before header matched, or header failed to match
                 with m.If(~self.session.inbound.active | led_start_matcher.rejected):
                     m.next = "writing"
-                    m.d.sync += [
-                        response_mux.select.eq(RESPONSE_404),
-                        parser_demux.select.eq(HTTP_PARSER_SINK),
-                        not_found_printer.en.eq(1), 
-                    ]
+                    m.d.sync += send_404
                 # start line matched successfully
                 with m.If(led_start_matcher.accepted):
                     m.next = "parsing_header"
@@ -135,42 +141,28 @@ class SimpleLedHttp(Component):
                     m.d.sync += parser_demux.select.eq(HTTP_PARSER_LED_BODY)
                 with m.Elif(~self.session.inbound.active):
                     m.next = "writing"
-                    # TODO: #4 - Should send a different error code besides 404 if the 
+                    # TODO: #4 - Should send a different error code besides 404 if the
                     #            headers fail to parse before end-of-session.
-                    m.d.sync += [
-                        response_mux.select.eq(RESPONSE_404),
-                        parser_demux.select.eq(HTTP_PARSER_SINK),
-                        not_found_printer.en.eq(1), 
-                    ]
-
+                    m.d.sync += send_404
             with m.State("parsing_body"): # TODO: #4 - Make the specific body depend on the path
                 m.next = "parsing_body"
                 with m.If(led_body_handler.accepted):
                     m.next = "writing"
-                    m.d.sync += [ 
-                        response_mux.select.eq(RESPONSE_OK),
-                        parser_demux.select.eq(HTTP_PARSER_SINK),
-                        ok_printer.en.eq(1), 
-                    ]
+                    m.d.sync += send_ok
                 with m.Elif(led_body_handler.rejected):
                     m.next = "writing"
-                    # TODO: #4 - Should send a different error code besides 404 if the 
+                    # TODO: #4 - Should send a different error code besides 404 if the
                     #            body fails to parse before end-of-session.
-                    m.d.sync += [
-                        response_mux.select.eq(RESPONSE_404),
-                        parser_demux.select.eq(HTTP_PARSER_SINK),
-                        not_found_printer.en.eq(1), 
-                    ]
+                    m.d.sync += send_404
             with m.State("writing"):
-                m.d.sync += [
-                    ok_printer.en.eq(0),
-                    not_found_printer.en.eq(0),
-                    self.session.outbound.active.eq(1),
-                ]
                 m.next = "writing"
-                with m.If(   ((response_mux.select == RESPONSE_OK) & ok_printer.done)
-                           | ((response_mux.select == RESPONSE_404) & not_found_printer.done)
-                         ):
+                m.d.sync += [
+                        ok_printer.en.eq(0),
+                        not_found_printer.en.eq(0),
+                        self.session.outbound.active.eq(1),
+                ]
+                with m.If(  ((response_mux.select == RESPONSE_OK) & ok_printer.done)
+                          | ((response_mux.select == RESPONSE_404) & not_found_printer.done)):
                     m.d.sync += self.session.outbound.active.eq(0)
                     # Can finish writing before all the input is collected,
                     # since a bad request migh trigger an early 404. Wait
@@ -178,5 +170,5 @@ class SimpleLedHttp(Component):
                     # state.
                     with m.If(~self.session.inbound.active):
                         m.next = "reset"
-       
+
         return m
