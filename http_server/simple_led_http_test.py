@@ -42,10 +42,9 @@ def test_ok_handling():
         await ctx.tick().until(~dut.session.outbound.active)
         assert not ctx.get(dut.session.outbound.data.valid)
 
-        # TODO: #3 -- Implement getting LED colors from the message.
-        #   assert ctx.get(dut.red) == 0x12
-        #   assert ctx.get(dut.green) == 0x34
-        #   assert ctx.get(dut.blue) == 0x56
+        assert ctx.get(dut.red) == 0x12
+        assert ctx.get(dut.green) == 0x34
+        assert ctx.get(dut.blue) == 0x56
 
         # Add some nice margins for our vcd
         await ctx.tick()
