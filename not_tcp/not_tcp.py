@@ -168,9 +168,15 @@ class StreamStop(Component):
             with m.State("read-body"):
                 m.next = "read-body"
                 connect(m, self.bus.upstream, input_limiter.inbound)
+                with m.If(stream != Const(self._stream_id)):
+                    # Disconnect from the input buffer, just discard the data:
+                    m.d.comb += [
+                        input_buffer.w_stream.valid.eq(0),
+                        input_limiter.outbound.ready.eq(1),
+                    ]
                 m.d.comb += input_limiter.start.eq(0)
                 with m.If(input_limiter.done):
-                    m.next = "read-len"
+                    m.next = "read-stream"
 
         with m.FSM(name="write"):
             bus = self.bus.downstream

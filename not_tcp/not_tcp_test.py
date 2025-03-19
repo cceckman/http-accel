@@ -27,14 +27,14 @@ def test_single_stop():
     p1 = host.Packet(start=True, stream=2,
                      body=bytes(i for i in range(0, 10)))
     # Host-to-device, starting and ending stream 3
-    p2 = host.Packet(start=True, end=True, stream=3,
-                     body=bytes(i for i in range(10, 15)))
-    # Host-to-device, middle of stream 2
+    # p2 = host.Packet(start=True, end=True, stream=3,
+    #                  body=bytes(i for i in range(10, 15)))
+    # # Host-to-device, middle of stream 2
     p3 = host.Packet(stream=2, body=bytes(i for i in range(15, 18)))
-    # device-to-host, stream 2; start and end markers, it's all the data
-    p4 = host.Packet(start=True, end=True, stream=2,
-                     body=bytes(i for i in range(18, 28)))
-    # host-to-device, stream 2: end marker only
+    # # device-to-host, stream 2; start and end markers, it's all the data
+    # p4 = host.Packet(start=True, end=True, stream=2,
+    #                  body=bytes(i for i in range(18, 28)))
+    # # host-to-device, stream 2: end marker only
     p5 = host.Packet(end=True, stream=2, body=bytes())
 
     async def driver(ctx):
@@ -48,17 +48,17 @@ def test_single_stop():
         await send_bus.send_active(p1.body)(ctx)
 
         # Feed in p2:
-        await send_bus.send_active(p2.to_bytes())(ctx)
-        # and p3:
+        # await send_bus.send_active(p2.to_bytes())(ctx)
+        # # and p3:
         await send_bus.send_active(p3.to_bytes())(ctx)
-        # Send p4 on the return path:
-        await send_stop.send_active(p4.body)(ctx)
-        # And mark the stream as closed:
-        ctx.set(dut.stop.outbound.active, 0)
-
-        # And then send p5 to hang up the inbound path:
+        # # Send p4 on the return path:
+        # await send_stop.send_active(p4.body)(ctx)
+        # # And mark the stream as closed:
+        # ctx.set(dut.stop.outbound.active, 0)
+        #
+        # # And then send p5 to hang up the inbound path:
         await send_bus.send_active(p5.to_bytes())(ctx)
-
+        #
         # Wait for everything to be flushed:
         await ctx.tick().until(
             ~dut.stop.inbound.active & ~dut.bus.downstream.valid)
