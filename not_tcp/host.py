@@ -4,9 +4,9 @@ from enum import IntFlag
 
 
 class Flag(IntFlag):
-    START = IntFlag(1)
-    END = IntFlag(2)
-    TO_HOST = IntFlag(4)
+    START = 1
+    END = 2
+    TO_HOST = 4
 
 
 @dataclass
