@@ -81,6 +81,11 @@ class BusRoot(Component):
     def elaborate(self, platform):
         m = Module()
 
+        # Degenerate implementation for a single stop with no arbitration,
+        # or with all stops forwarding unmatched packets.
+        connect(m, self.rx, self.bus.upstream)
+        connect(m, self.bus.downstream, self.tx)
+
         return m
 
 
