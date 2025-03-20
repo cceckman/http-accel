@@ -258,13 +258,16 @@ class StreamStop(Component):
 
             with m.State("write-stream"):
                 m.next = "write-stream"
-                with m.If(bus.ready & (output_buffer.r_level > 0)):
-                    # The output is ready, and we have data to send.
-                    # Lock in the level as the length of this packet.
-                    m.d.sync += write_len.eq(output_buffer.r_level)
+                with m.If((output_buffer.r_level > 0)):
+                    # We're ready to start sending...
                     m.d.comb += bus.payload.eq(self._stream_id)
                     m.d.comb += bus.valid.eq(1)
-                    m.next = "write-len"
+                    m.d.sync += write_len.eq(output_buffer.r_level)
+                    # The output is ready, and we have data to send.
+                    # Lock in the level as the length of this packet.
+                    with m.If(bus.ready):
+                        # Only transition if we are ready-to-send.
+                        m.next = "write-len"
             with m.State("write-len"):
                 m.next = "write-len"
                 # Write the length.
