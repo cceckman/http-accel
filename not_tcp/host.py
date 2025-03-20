@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import struct
+from typing import Optional
 
 
 @dataclass
@@ -15,7 +16,11 @@ class Header:
     stream: int
     length: int
 
-    def __len__(cls):
+    @classmethod
+    def length(cls):
+        return 3
+
+    def __len__(self):
         return 3
 
     def to_bytes(self) -> bytes:
@@ -49,6 +54,17 @@ class Packet:
     stream: int = 0
     body: bytes = bytes()
 
+    @classmethod
+    def from_header(cls, header: Header, body: bytes) -> "Packet":
+        assert header.length == len(body), f"{header.length} != {len(body)}"
+        return Packet(
+            start=header.start,
+            end=header.end,
+            to_host=header.to_host,
+            stream=header.stream,
+            body=body
+        )
+
     def __len__(self):
         return len(Header) + len(self.body)
 
@@ -61,3 +77,11 @@ class Packet:
 
     def to_bytes(self) -> bytes:
         return self.header().to_bytes() + self.body
+
+    @classmethod
+    def from_bytes(cls, buf: bytes) -> ("Packet", bytes):
+        header = Header.from_bytes(buf[:Header.length()])
+        buf = buf[Header.length():]
+        body = buf[:header.length]
+        buf = buf[header.length:]
+        return (Packet.from_header(header, body), buf)

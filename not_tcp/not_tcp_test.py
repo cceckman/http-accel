@@ -1,4 +1,5 @@
 import sys
+import functools
 
 from amaranth.sim import Simulator
 
@@ -74,15 +75,17 @@ def test_single_stop():
     collect_stop.assert_eq(
         p1.body + p3.body + p5.body
     )
-    # TODO: Stream multiplexing, to the next stops on the bus
-
-    # And the bus should have received the packet for stream 3
-    # (which continued around the bus),
-    # then the packet sent for stream 2 (which was generated)
-    # collect_bus.assert_eq(
-    # #     # p2.to_bytes() +
-    #     p4.to_bytes()
-    # )
+    # And should have received _bodies equivalent to_ the full p4 stream.
+    # TODO: Consider forwarding around the bus, too.
+    rcvd = collect_bus.body
+    packets = []
+    while len(rcvd) > 0:
+        (p, remainder) = host.Packet.from_bytes(rcvd)
+        packets += [p]
+        rcvd = remainder
+    bodies = map(lambda p: p.body, packets)
+    body = functools.reduce(lambda a, b: a + b, bodies, bytes())
+    assert body == p4.body
 
 
 if __name__ == "__main__":

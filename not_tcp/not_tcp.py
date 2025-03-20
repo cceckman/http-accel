@@ -251,7 +251,7 @@ class StreamStop(Component):
 
             with m.State("write-stream"):
                 m.next = "write-stream"
-                with m.If(bus.ready & output_buffer.r_stream.valid):
+                with m.If(bus.ready & (output_buffer.r_level > 0)):
                     # The output is ready, and we have data to send.
                     # Lock in the level as the length of this packet.
                     m.d.sync += write_len.eq(output_buffer.r_level)
@@ -260,27 +260,27 @@ class StreamStop(Component):
                     m.next = "write-len"
             with m.State("write-len"):
                 m.next = "write-len"
+                # Write the length.
+                m.d.comb += bus.payload.eq(write_len)
+                m.d.comb += bus.valid.eq(1)
                 with m.If(bus.ready):
-                    # Write the length.
-                    m.d.comb += bus.payload.eq(write_len)
-                    m.d.comb += bus.valid.eq(1)
                     m.next = "write-flags"
             with m.State("write-flags"):
                 m.next = "write-flags"
-                # TODO: Session state
+                # TODO: Session state bits in flags.
+                m.d.comb += [
+                    bus.payload.eq(0b111),
+                    bus.valid.eq(1),
+                ]
+                m.d.comb += [
+                    output_limiter.count.eq(write_len),
+                    output_limiter.start.eq(1),
+                ]
                 with m.If(bus.ready):
-                    m.d.comb += [
-                        bus.payload.eq(0b111),
-                        bus.valid.eq(1),
-                    ]
-                    m.d.comb += [
-                        output_limiter.count.eq(write_len),
-                        output_limiter.start.eq(1),
-                    ]
                     m.next = "write-body"
             with m.State("write-body"):
                 m.next = "write-body"
                 connect(m, output_limiter.outbound, bus)
                 with m.If(output_limiter.done):
-                    m.next = "write-len"
+                    m.next = "write-stream"
         return m
