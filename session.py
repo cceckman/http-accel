@@ -35,18 +35,20 @@ class BidiSessionSignature(Signature):
     The sequence of usage is as follows:
 
     - At reset, inbound.active and outbound.active are both zero.
-    - A new session starts with inbound.active raised
-    - The session manager wait for outbound.active to be raised before
-      passing data into inbound.data. inbound.data and outbound.data
-      perform flow control as usual
-    - Data flows for a while
-    - At the end of a session, inbound.active OR outbound.active deasserts,
-      after all data has been consumed (i.e. data.valid goes low for
-      the final time)
-    - The still-active end must continue consuming data until
-      the other .active goes low
-    - Once both .active are low, the session has been reset, and a new session
-      can proceed
+    - A new session becomes *half-open* when the client asserts inbound.active.
+    - Subsequently, the server asserts outbound.active.
+    - To end the session, both `inbound.active` and `outbound.active`
+      will de-assert. This can happen in either order, but they cannot assert
+      again until the beginning of the next session.
+    - Data may be pushed once the session is established:
+      - `inbound.data.valid` will not assert until both `active` signals
+        are asserted.
+      - `outbound.data.valid` must not assert until both `active signals
+        are asserted.
+    - Once the session is established, new data may appear (`.valid` asserted)
+      as long as the corresponding `.active` signal remains asserted.
+      Once an `.active` signal goes low, the corresponding `.valid` signal
+      will/must not re-assert until a new session is established.
     """
 
     def __init__(self):
