@@ -7,7 +7,7 @@ from stream_fixtures import StreamSender, StreamCollector
 
 
 def test_limit_forward():
-    dut = LimitForwarder()
+    dut = LimitForwarder(width=8,max_count=80)
 
     sim = Simulator(dut)
     collector = StreamCollector(dut.outbound)

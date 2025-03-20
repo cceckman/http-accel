@@ -71,7 +71,7 @@ class BusRoot(Component):
     """
     Root of a Not TCP bus.
     Connects the (host) serial lines to the (device-local) bus
-    and sorts packets between upstrema and downstream.
+    and sorts packets between upstream and downstream.
     """
 
     bus: Out(BusStopSignature())
@@ -118,8 +118,10 @@ class StreamStop(Component):
 
         connect(m, self.stop.outbound.data, output_buffer.w_stream)
         connect(m, input_buffer.r_stream, self.stop.inbound.data)
-        input_limiter = m.submodules.input_limiter = LimitForwarder()
-        output_limiter = m.submodules.output_limiter = LimitForwarder()
+        input_limiter = m.submodules.input_limiter = LimitForwarder(
+            width=8, max_count=256)
+        output_limiter = m.submodules.output_limiter = LimitForwarder(
+            width=8, max_count=256)
 
         # Default state: don't transfer any data.
         m.d.comb += [

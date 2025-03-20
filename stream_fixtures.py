@@ -2,7 +2,6 @@
 Test fixtures for sending and receiving in streams.
 """
 import random
-import sys
 from typing import Iterable
 
 __all__ = ["StreamCollector", "StreamSender"]

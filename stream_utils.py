@@ -1,30 +1,41 @@
 from amaranth import Module, Signal
 from amaranth.lib.wiring import Component, In, Out
 from amaranth.lib import stream
+from amaranth.utils import ceil_log2
 
 
 class LimitForwarder(Component):
     """
     Forwards a limited number of bytes from one stream to another, then stops.
 
-    TODO: Documentation, parameterization
+    Parameters
+    ---------
+    width: width of the data stream.
+    max_count: maximum value of the counter.
+
+    TODO: Documentation for attributes
     """
 
-    inbound: In(stream.Signature(8))
-    outbound: Out(stream.Signature(8))
+    def __init__(self, width: int, max_count: int):
+        count = ceil_log2(max_count)
 
-    count: In(9)
-    start: In(1)
-    done: Out(1)
+        super().__init__({
+            "inbound": In(stream.Signature(width)),
+            "outbound": Out(stream.Signature(width)),
+            "count": In(count),
+            "start": In(1),
+            "done": Out(1),
+        })
+        self._count = count
 
     def elaborate(self, _platform):
         m = Module()
 
-        countdown = Signal(9)
+        countdown = Signal(self._count)
         # No transfer by default:
         m.d.comb += [
-                self.inbound.ready.eq(0),
-                self.outbound.valid.eq(0),
+            self.inbound.ready.eq(0),
+            self.outbound.valid.eq(0),
         ]
 
         with m.FSM():
@@ -40,11 +51,18 @@ class LimitForwarder(Component):
                 with m.If(countdown == 0):
                     m.next = "idle"
                 with m.Else():
-                    # Doesn't want to connect()?
+                    # We want to do this:
+                    # connect(m, self.inbound, self.outbound)
+                    # But if we do so in the testbench, we get
+                    #   raise DriverConflict("Combinationally driven signals cannot be overriden by testbenches")
+                    # from
+                    #   ctx.set(dut.inbound.valid, 1)
+
+                    # Yet this works:
                     m.d.comb += [
-                            self.inbound.ready.eq(self.outbound.ready),
-                            self.outbound.valid.eq(self.inbound.valid),
-                            self.outbound.payload.eq(self.inbound.payload),
+                        self.inbound.ready.eq(self.outbound.ready),
+                        self.outbound.valid.eq(self.inbound.valid),
+                        self.outbound.payload.eq(self.inbound.payload),
                     ]
                     with m.If(self.outbound.ready & self.inbound.valid):
                         # Byte was transferred
