@@ -9,13 +9,11 @@ Each packet includes a short header: flags, a session ID, and a body-length.
 from amaranth import Module, Signal, unsigned, Const
 from amaranth.lib.wiring import Component, In, Out, Signature, connect
 from amaranth.lib import stream
-from amaranth.lib.data import UnionLayout, ArrayLayout, Struct
+from amaranth.lib.data import UnionLayout, Struct
 from amaranth.lib.fifo import SyncFIFOBuffered
 
 import session
 from stream_utils import LimitForwarder
-from http_server.stream_mux import StreamMux
-from http_server.stream_demux import StreamDemux
 
 
 class Flags(Struct):
@@ -138,6 +136,60 @@ class StreamStop(Component):
         flags = Signal(flags_layout)
         stream = Signal(8)
 
+        # Connection-state handling:
+        connected = Signal(1)
+        m.d.comb += [self.stop.inbound.active.eq(0),
+                     connected.eq(0)]
+        with m.FSM(name="connection"):
+            with m.State("closed"):
+                m.next = "closed"
+                with m.If(
+                        flags.flags.start &
+                        (stream == Const(self._stream_id))):
+                    m.next = "requested"
+            with m.State("requested"):
+                m.next = "requested"
+                m.d.comb += [self.stop.inbound.active.eq(1)]
+                with m.If(self.stop.outbound.active):
+                    m.next = "open"
+            with m.State("open"):
+                m.d.comb += [
+                    self.stop.inbound.active.eq(1),
+                    connected.eq(1),
+                ]
+                with m.If(~self.stop.outbound.active):
+                    m.next = "server-done"
+                with m.Elif(
+                        flags.flags.end &
+                        (stream == Const(self._stream_id))):
+                    # Client has marked end-of-stream.
+                    # Consume the input buffer.
+                    m.next = "client-done"
+            with m.State("client-done"):
+                m.d.comb += [connected.eq(1)]
+                m.next = "client-done"
+                with m.If(~self.stop.outbound.active):
+                    # Server is also done, and flushed.
+                    m.next = "flush"
+            with m.State("server-done"):
+                m.next = "server-done"
+                m.d.comb += [connected.eq(1), self.stop.inbound.active.eq(1)]
+                with m.If(
+                    ~flags.flags.end &
+                        (stream == Const(self._stream_id))):
+                    m.next = "flush"
+            with m.State("flush"):
+                m.d.comb += [connected.eq(1)]
+                m.next = "flush"
+                with m.If(
+                    (read_len == Const(0)) &
+                    (input_buffer.r_level == Const(0)) &
+                    (output_buffer.r_level == Const(0))
+                ):
+                    # All data processing done.
+                    m.next = "closed"
+        # END of connection-state FSM
+
         with m.FSM(name="read"):
             bus = self.bus.upstream
             with m.State("read-stream"):
@@ -145,6 +197,8 @@ class StreamStop(Component):
                 m.d.comb += bus.ready.eq(1)
                 with m.If(bus.valid):
                     m.d.sync += stream.eq(bus.payload)
+                    # Zero the flags, so we don't get a false start/end
+                    m.d.sync += flags.eq(0)
                     m.next = "read-len"
             with m.State("read-len"):
                 m.next = "read-len"
@@ -158,12 +212,25 @@ class StreamStop(Component):
                 with m.If(bus.valid):
                     # At the cycle edge, capture the flags byte...
                     m.d.sync += flags.bytes.eq(bus.payload)
-                    # And trigger the input-limiter to begin starting with
+                    with m.If(stream == Const(self._stream_id)):
+                        # maybe block until accepted.
+                        # TODO: This introduces an extra cycle of delay
+                        # when we're "already connected",
+                        # but keeps the logic blocks simpler.
+                        m.next = "await-accept"
+                    with m.Else():
+                        # If this isn't for our stream, proceed to read
+                        # (and discard)
+                        m.d.comb += input_limiter.count.eq(read_len)
+                        m.d.comb += input_limiter.start.eq(1)
+                        m.next = "read-body"
+            with m.State("await-accept"):
+                m.next = "await-accept"
+                with m.If(connected):
+                    # trigger the input-limiter to begin starting with
                     # the byte following that.
                     m.d.comb += input_limiter.count.eq(read_len)
                     m.d.comb += input_limiter.start.eq(1)
-                    # TODO: Ignore / block / forward-to-null
-                    # if session is inactive
                     m.next = "read-body"
             with m.State("read-body"):
                 m.next = "read-body"
