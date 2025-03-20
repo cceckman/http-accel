@@ -24,18 +24,18 @@ def test_single_stop():
 
     # The packet sequence we'll use:
     # Host-to-device, starting stream 2
-    p1 = Packet(flags=Flag.START, stream=2,
+    p1 = Packet(flags=Flag.START, stream_id=2,
                 body=bytes(i for i in range(0, 10)))
     # Host-to-device, starting and ending stream 3
-    p2 = Packet(flags=Flag.START | Flag.END, stream=3,
+    p2 = Packet(flags=Flag.START | Flag.END, stream_id=3,
                 body=bytes(i for i in range(10, 15)))
     # Host-to-device, middle of stream 2
-    p3 = Packet(stream=2, body=bytes(i for i in range(15, 18)))
+    p3 = Packet(stream_id=2, body=bytes(i for i in range(15, 18)))
     # # device-to-host, stream 2; start and end markers, it's all the data
-    p4 = Packet(flags=Flag.START | Flag.END, stream=2,
+    p4 = Packet(flags=Flag.START | Flag.END, stream_id=2,
                 body=bytes(i for i in range(18, 28)))
     # host-to-device, stream 2: end marker only
-    p5 = Packet(flags=Flag.END, stream=2, body=bytes())
+    p5 = Packet(flags=Flag.END, stream_id=2, body=bytes())
 
     async def driver(ctx):
         # Just the header for p1 should start the stream:
@@ -85,7 +85,7 @@ def test_single_stop():
     bodies = bytes()
     for packet in packets:
         assert p.flags & Flag.TO_HOST
-        assert p.stream == 2
+        assert p.stream_id == 2
         bodies += packet.body
     assert packets[0].flags & Flag.START
     assert packets[-1].flags & Flag.END

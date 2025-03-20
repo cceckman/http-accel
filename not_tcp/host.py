@@ -17,7 +17,7 @@ class Header:
 
     flags: Flag
 
-    stream: int
+    stream_id: int
     length: int
 
     @classmethod
@@ -28,13 +28,13 @@ class Header:
         return 3
 
     def to_bytes(self) -> bytes:
-        return struct.pack("BBB", self.stream, self.length, self.flags)
+        return struct.pack("BBB", self.stream_id, self.length, self.flags)
 
     def from_bytes(buffer: bytes) -> "Header":
         (stream, length, flags) = struct.unpack("BBB", buffer)
         return Header(
             flags=Flag(flags),
-            stream=stream,
+            stream_id=stream,
             length=length,
         )
 
@@ -47,7 +47,7 @@ class Packet:
 
     flags: Flag = Flag(0)
 
-    stream: int = 0
+    stream_id: int = 0
     body: bytes = bytes()
 
     @classmethod
@@ -55,7 +55,7 @@ class Packet:
         assert header.length == len(body), f"{header.length} != {len(body)}"
         return Packet(
             flags=header.flags,
-            stream=header.stream,
+            stream_id=header.stream_id,
             body=body
         )
 
@@ -63,10 +63,10 @@ class Packet:
         return len(Header) + len(self.body)
 
     def header(self) -> Header:
-        assert self.stream >= 0
-        assert self.stream < 256
+        assert self.stream_id >= 0
+        assert self.stream_id < 256
 
-        return Header(self.flags, self.stream, length=len(self.body))
+        return Header(self.flags, self.stream_id, length=len(self.body))
 
     def to_bytes(self) -> bytes:
         return self.header().to_bytes() + self.body
