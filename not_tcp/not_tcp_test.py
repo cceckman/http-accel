@@ -83,9 +83,14 @@ def test_single_stop():
         (p, remainder) = host.Packet.from_bytes(rcvd)
         packets += [p]
         rcvd = remainder
-    bodies = map(lambda p: p.body, packets)
-    body = functools.reduce(lambda a, b: a + b, bodies, bytes())
-    assert body == p4.body
+    bodies = bytes()
+    for packet in packets:
+        assert p.to_host
+        assert p.stream == 0
+        bodies += p.body
+    assert p[0].start
+    assert p[:-1].end
+    assert bodies == p4.body
 
 
 if __name__ == "__main__":
