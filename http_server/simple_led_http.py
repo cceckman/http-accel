@@ -130,7 +130,8 @@ class SimpleLedHttp(Component):
                     m.next = "writing"
                     m.d.sync += send_404
                 # start line matched successfully
-                with m.If(led_start_matcher.accepted):
+                with m.Elif(led_start_matcher.accepted):
+
                     m.next = "parsing_header"
                     m.d.sync += parser_demux.select.eq(HTTP_PARSER_HEADERS)
             with m.State("parsing_header"):
