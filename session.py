@@ -3,16 +3,13 @@ Next-level of connection management: sessions, not just backpressure
 
 """
 
-from amaranth import Module, Signal, unsigned, Const
-from amaranth.lib.wiring import Component, In, Out, Signature
+from amaranth.lib.wiring import In, Out, Signature
 from amaranth.lib import stream
-from amaranth.lib.data import UnionLayout, ArrayLayout, Struct
-from amaranth.lib.fifo import SyncFIFOBuffered
 
 
 class SessionSignature(Signature):
     """
-    Signature of a *session*: handshake'd data.
+    Signature of a *session*: a reusable data stream interface.
 
 
     Attributes
@@ -31,13 +28,28 @@ class SessionSignature(Signature):
 
 class BidiSessionSignature(Signature):
     """
-    - Start with inbound.active raised: "new request"
-    - Wait for outbound.active to be raised before inputting data
-    - Data flows
-    - Wait until outbound data flushed before deasserting session_active
-    - Early termination (e.g. 400): flush inbound data until inbound.session_active deasserted
-    - Both zero --> reset state
+    A bidirectional session-oriented data stream.
+    A pair of SessionSignatures that control inbound and outbound data,
+    and provide a bidirectional handshake for starting a new session.
 
+    The sequence of usage is as follows:
+
+    - At reset, inbound.active and outbound.active are both zero.
+    - A new session becomes *half-open* when the client asserts inbound.active.
+    - Subsequently, the server asserts outbound.active.
+    - To end the session, both `inbound.active` and `outbound.active`
+      will de-assert. This can happen in either order, but they cannot assert
+      again until the beginning of the next session.
+    - Once the session is established, data may flow according to the
+      `stream.Signature` protocol: a byte is transferred on each cycle
+      where `valid` and `ready` are both asserted.
+      Data must not flow until both `active` signals have been asserted.
+    - An `.active` signal must not deassert until all data from the
+      corresponding source has been read (i.e. until the corresponding
+      `.valid` has deasserted after transferring all bytes).
+    - Once an `active` signal has deasserted, it must not re-assert until
+      a new session has been established (i.e. the other signal has also
+      deasserted).
     """
 
     def __init__(self):
