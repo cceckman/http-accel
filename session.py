@@ -40,15 +40,16 @@ class BidiSessionSignature(Signature):
     - To end the session, both `inbound.active` and `outbound.active`
       will de-assert. This can happen in either order, but they cannot assert
       again until the beginning of the next session.
-    - Data may be pushed once the session is established:
-      - `inbound.data.valid` will not assert until both `active` signals
-        are asserted.
-      - `outbound.data.valid` must not assert until both `active signals
-        are asserted.
-    - Once the session is established, new data may appear (`.valid` asserted)
-      as long as the corresponding `.active` signal remains asserted.
-      Once an `.active` signal goes low, the corresponding `.valid` signal
-      will/must not re-assert until a new session is established.
+    - Once the session is established, data may flow according to the
+      `stream.Signature` protocol: a byte is transferred on each cycle
+      where `valid` and `ready` are both asserted.
+      Data must not flow until both `active` signals have been asserted.
+    - An `.active` signal must not deassert until all data from the
+      corresponding source has been read (i.e. until the corresponding
+      `.valid` has deasserted after transferring all bytes).
+    - Once an `active` signal has deasserted, it must not re-assert until
+      a new session has been established (i.e. the other signal has also
+      deasserted).
     """
 
     def __init__(self):
