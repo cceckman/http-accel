@@ -9,6 +9,6 @@ set -e
 
 . ./enter.sh
 export PYTHONPATH="$(pwd)"
-pytest 2>&1
+pytest -v 2>&1
 
 

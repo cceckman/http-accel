@@ -32,8 +32,3 @@ def test_out_of_range_select():
         ctx.set(dut.select, TEST_MUX_WIDTH+1)
         assert ctx.get(dut.out.payload) == 0
     run_driver(driver)
-
-
-async def bench(ctx):
-    await test_simple_select(ctx)
-    await test_out_of_range_select(ctx)
