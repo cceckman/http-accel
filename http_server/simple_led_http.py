@@ -45,7 +45,7 @@ class SimpleLedHttp(Component):
         connect(m, self.session.inbound.data, parser_demux.input)
 
         # TODO: #4 - Add packet count and RFC2324 endpoints
-        MATCHED_LED_PATH = 1 # start_matcher path match is in the order the paths are returned.
+        MATCHED_LED_PATH = 1 # start_matcher path match is in the order the paths are connected.
         start_matcher = m.submodules.start_matcher = ParseStart(["/led"])
         HTTP_PARSER_START = 0
         connect(m, start_matcher.input, parser_demux.outs[HTTP_PARSER_START])
