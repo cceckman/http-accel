@@ -5,11 +5,10 @@
 # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
 # flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
-find . -name '*_test.py' \
-| grep -v venv \
-| sed 's/_test.py$/.vcd/' \
-| xargs redo-ifchange
+set -e
 
 . ./enter.sh
+export PYTHONPATH="$(pwd)"
+pytest 2>&1
 
 

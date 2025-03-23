@@ -5,6 +5,7 @@ from amaranth.sim import Simulator
 from simple_led_body import SimpleLedBody
 from stream_fixtures import StreamSender
 
+
 def test_simple_good_case():
     dut = SimpleLedBody()
     sender = StreamSender(stream=dut.input)
@@ -33,6 +34,7 @@ def test_simple_good_case():
 
     with sim.write_vcd(sys.stdout):
         sim.run_until(0.0001)
+
 
 def test_send_two_bodies():
     dut = SimpleLedBody()
@@ -75,6 +77,7 @@ def test_send_two_bodies():
 
     with sim.write_vcd(sys.stdout):
         sim.run_until(0.0001)
+
 
 def test_invalid_hex():
     dut = SimpleLedBody()
