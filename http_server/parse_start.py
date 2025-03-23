@@ -57,6 +57,8 @@ class ParseStart(Component):
 
         resets = []
 
+        # TODO: #4 - Evaluate using StringMatch instead of StringContainsMatch. Here and below.
+        #            Check https://en.wikipedia.org/wiki/HTTP_request_smuggling cases.
         method_stream = stream.Signature(8).create()
         get_matcher = m.submodules.get_matcher = StringContainsMatch("GET")
         resets.append(get_matcher.reset)
@@ -106,6 +108,7 @@ class ParseStart(Component):
                     self.input.ready.eq(method_stream.ready),
                 ]
                 with m.If(self.input.valid & (self.input.payload == ord(' '))):
+                    m.d.comb += self.input.ready.eq(1)
                     m.next = "match_path"
             with m.State("match_path"):
                 m.next = "match_path"
@@ -115,6 +118,7 @@ class ParseStart(Component):
                     self.input.ready.eq(path_stream.ready),
                 ]
                 with m.If(self.input.valid & (self.input.payload == ord(' '))):
+                    m.d.comb += self.input.ready.eq(1)
                     m.next = "match_protocol"
             with m.State("match_protocol"):
                 m.next = "match_protocol"
@@ -125,9 +129,13 @@ class ParseStart(Component):
                     self.input.ready.eq(protocol_match.input.ready),
                 ]
                 with m.If(self.input.valid & (self.input.payload == ord('\r'))):
+                    m.d.comb += self.input.ready.eq(1)
                     m.next = "match_end"
             with m.State("match_end"):
+                m.d.comb += self.input.ready.eq(1)
                 m.next = "match_end"
+                # TODO: #4 - Should error if this isn't \n, and setup to return a 
+                # HTTP 400 Bad Request error.
                 with m.If(self.input.valid & (self.input.payload == ord('\n'))):
                     m.next = "done"
             with m.State("done"):
