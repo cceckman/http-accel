@@ -160,6 +160,7 @@ class StreamStop(Component):
                 with m.If(self.stop.outbound.active):
                     m.next = "open"
             with m.State("open"):
+                m.next = "open"
                 m.d.comb += [
                     self.stop.inbound.active.eq(1),
                     connected.eq(1),
@@ -173,8 +174,8 @@ class StreamStop(Component):
                     # Consume the input buffer.
                     m.next = "client-done"
             with m.State("client-done"):
-                m.d.comb += [connected.eq(1)]
                 m.next = "client-done"
+                m.d.comb += [connected.eq(1)]
                 with m.If(~self.stop.outbound.active):
                     # Server is also done, and flushed.
                     m.next = "flush"
@@ -186,8 +187,8 @@ class StreamStop(Component):
                         (stream == Const(self._stream_id))):
                     m.next = "flush"
             with m.State("flush"):
-                m.d.comb += [connected.eq(1)]
                 m.next = "flush"
+                m.d.comb += [connected.eq(1)]
                 with m.If(
                     (read_len == Const(0)) &
                     (input_buffer.r_level == Const(0)) &
