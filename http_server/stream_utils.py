@@ -34,6 +34,6 @@ def fanout_stream(m: Module, input: stream.Signature, outputs: list[stream.Signa
 
     for o in outputs:
         m.d.comb += [
-            o.valid.eq(input.valid),
+            o.valid.eq(input.valid & combined_ready),
             o.payload.eq(input.payload),
         ]
