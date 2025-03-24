@@ -66,8 +66,7 @@ def test_single_stop():
     sim.add_testbench(driver)
     sim.add_clock(1e-6)
 
-    with sim.write_vcd(sys.stdout):
-        sim.run_until(0.000100)  # 100us
+    sim.run()
 
     # After simulation is complete...
     # The stop should have received all the packets for this stream:
@@ -91,6 +90,3 @@ def test_single_stop():
     assert packets[-1].flags & Flag.END
     assert bodies == p4.body
 
-
-if __name__ == "__main__":
-    test_single_stop()
