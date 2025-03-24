@@ -32,15 +32,13 @@ def test_single_stop():
     # Host-to-device, middle of stream 2
     p3 = Packet(stream_id=2, body=bytes(i for i in range(15, 18)))
     # # device-to-host, stream 2; start and end markers, it's all the data
-    p4 = Packet(flags=Flag.START | Flag.END, stream_id=2,
-                body=bytes(i for i in range(18, 28)))
+    p4_body = bytes(i for i in range(18, 28))
     # host-to-device, stream 2: end marker only
     p5 = Packet(flags=Flag.END, stream_id=2, body=bytes())
 
     async def driver(ctx):
         # Just the header for p1 should start the stream:
         await send_bus.send_active(p1.header().to_bytes())(ctx)
-        # TODO: wait until "accepted"
         await ctx.tick().until(dut.stop.inbound.active)
         # Accept the stream:
         ctx.set(dut.stop.outbound.active, 1)
@@ -52,16 +50,17 @@ def test_single_stop():
         # # and p3:
         await send_bus.send_active(p3.to_bytes())(ctx)
         # # Send p4 on the return path:
-        await send_stop.send_active(p4.body)(ctx)
-        # # And mark the stream as closed:
+        await send_stop.send_active(p4_body)(ctx)
+        # And mark the stream as closed:
         ctx.set(dut.stop.outbound.active, 0)
         #
         # # And then send p5 to hang up the inbound path:
         await send_bus.send_active(p5.to_bytes())(ctx)
         #
         # Wait for everything to be flushed:
-        await ctx.tick().until(
-            ~dut.stop.inbound.active & ~dut.bus.downstream.valid)
+        await ctx.tick().until(~dut.connected)
+        assert ctx.get(~dut.stop.inbound.active)
+        assert ctx.get(~dut.bus.downstream.valid)
 
     sim.add_testbench(driver)
     sim.add_clock(1e-6)
@@ -88,5 +87,5 @@ def test_single_stop():
         bodies += packet.body
     assert packets[0].flags & Flag.START
     assert packets[-1].flags & Flag.END
-    assert bodies == p4.body
+    assert bodies == p4_body
 

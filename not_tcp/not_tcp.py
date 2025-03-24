@@ -103,10 +103,14 @@ class StreamStop(Component):
     ----------
     session: Inner interface
     bus: Bus interface
+
+    connected:  Debug/test interface indicating connection status.
+                Testonly, for now.
     """
 
     stop: Out(session.BidiSessionSignature())
     bus: In(BusStopSignature())
+    connected: Out(1)
 
     def __init__(self, stream_id):
         super().__init__()
@@ -144,9 +148,8 @@ class StreamStop(Component):
         stream = Signal(8)
 
         # Connection-state handling:
-        connected = Signal(1)
         m.d.comb += [self.stop.inbound.active.eq(0),
-                     connected.eq(0)]
+                     self.connected.eq(0)]
         with m.FSM(name="connection"):
             with m.State("closed"):
                 m.next = "closed"
@@ -163,7 +166,7 @@ class StreamStop(Component):
                 m.next = "open"
                 m.d.comb += [
                     self.stop.inbound.active.eq(1),
-                    connected.eq(1),
+                    self.connected.eq(1),
                 ]
                 with m.If(~self.stop.outbound.active):
                     m.next = "server-done"
@@ -175,20 +178,21 @@ class StreamStop(Component):
                     m.next = "client-done"
             with m.State("client-done"):
                 m.next = "client-done"
-                m.d.comb += [connected.eq(1)]
+                m.d.comb += [self.connected.eq(1)]
                 with m.If(~self.stop.outbound.active):
                     # Server is also done, and flushed.
                     m.next = "flush"
             with m.State("server-done"):
                 m.next = "server-done"
-                m.d.comb += [connected.eq(1), self.stop.inbound.active.eq(1)]
+                m.d.comb += [self.connected.eq(1),
+                             self.stop.inbound.active.eq(1)]
                 with m.If(
                     ~flags.flags.end &
                         (stream == Const(self._stream_id))):
                     m.next = "flush"
             with m.State("flush"):
                 m.next = "flush"
-                m.d.comb += [connected.eq(1)]
+                m.d.comb += [self.connected.eq(1)]
                 with m.If(
                     (read_len == Const(0)) &
                     (input_buffer.r_level == Const(0)) &
@@ -234,7 +238,7 @@ class StreamStop(Component):
                         m.next = "read-body"
             with m.State("await-accept"):
                 m.next = "await-accept"
-                with m.If(connected):
+                with m.If(self.connected):
                     # trigger the input-limiter to begin starting with
                     # the byte following that.
                     m.d.comb += input_limiter.count.eq(read_len)
