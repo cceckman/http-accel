@@ -2,10 +2,9 @@ from amaranth import Module, Signal, unsigned, Array, Const, Assert
 from amaranth.lib.wiring import In, Out, Component
 from amaranth.lib import stream
 
-
-class Printer(Component):
+class AbstractPrinter(Component):
     """
-    When activated, prints a constant string to its output stream.
+    When activated, prints a string to its output stream.
 
     Parameters
     ----------
@@ -25,6 +24,26 @@ class Printer(Component):
     output: Out(stream.Signature(unsigned(8)))
     en: In(1)
     done: Out(1, init=1)
+
+
+class Printer(AbstractPrinter):
+    """
+    When activated, prints a constant string to its output stream.
+
+    Parameters
+    ----------
+    message: str
+        The string to print to output.
+
+    Attributes
+    ----------
+    output: Stream(8), out
+            The data stream to write the message to.
+    en:     Signal(1), in
+            One-shot trigger; start writing the message to output.
+    done:   Signal(1), out
+            High when inactive, i.e. writing is done.
+    """
 
     def __init__(self, message):
         if isinstance(message, str):

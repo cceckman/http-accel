@@ -13,19 +13,19 @@ def test_count():
         await ctx.tick()
         ctx.set(dut.reset, 0)
 
-        ctx.set(dut.en, 1)
+        ctx.set(dut.inc, 1)
         for i in range(5):
             assert ctx.get(dut.digit) == i
             await ctx.tick()
         assert ctx.get(dut.digit) == 5
 
         # If disabled, ticking should not change value
-        ctx.set(dut.en, 0)
+        ctx.set(dut.inc, 0)
         for i in range(5):
             assert ctx.get(dut.digit) == 5
             await ctx.tick()
 
-        ctx.set(dut.en, 1)
+        ctx.set(dut.inc, 1)
         for i in range(10):
             digit = ctx.get(dut.digit)
             assert digit == (5+i) % 10

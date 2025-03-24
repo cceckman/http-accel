@@ -2,15 +2,17 @@ from amaranth import Module, Signal, unsigned, Array, Const
 from amaranth.lib.wiring import In, Out, Component
 from amaranth.lib import stream
 
+from printer import AbstractPrinter
+
 class BcdDigit(Component):
     """
     A single Binary-Coded Decimal Digit
 
-    The 'ovf' of one digit should be connected to the 'en' of the next digit.
+    The 'ovf' of one digit should be connected to the 'inc' of the next digit.
 
     reset : Signal(1), in. Resets the counter.
-    en    : Signal(1), in
-           The counter is incremented on each cycle where `en` is asserted,
+    inc    : Signal(1), in
+           The counter is incremented on each cycle where `inc` is asserted,
            otherwise retains its value.
     ovf   : Signal(1), out
             `ovf` is asserted when the counter overflows
@@ -18,29 +20,29 @@ class BcdDigit(Component):
             The current value of the digit.
     """
 
+    reset: In(1)
+    inc: In(1)
+    ovf: Out(1, init=1)
+    digit: Out(4, init=0)
+
     def __init__(self):
-        super().__init__({
-            "reset": In(1),
-            "en": In(1),
-            "ovf": Out(1, init=0),
-            "digit": Out(4, init=0),
-        })
+        super().__init__()
 
     def elaborate(self, unused_platform):
         m = Module()
 
-        m.d.comb += self.ovf.eq(self.en & (self.digit == 9))
+        m.d.comb += self.ovf.eq(self.inc & (self.digit == 9))
 
         with m.If(self.reset):
             m.d.sync += self.digit.eq(0)
-        with m.Elif(self.en):
+        with m.Elif(self.inc):
             with m.If(self.ovf):
                 m.d.sync += self.digit.eq(0)
             with m.Else():
                 m.d.sync += self.digit.eq(self.digit + 1)
         return m
 
-class BcdCounter(Component):
+class BcdCounter(AbstractPrinter):
     """
     An up-counter that uses Binary Coded Decimal (BCD) internally.
 
@@ -50,7 +52,7 @@ class BcdCounter(Component):
     By counting in BCD, it is able to efficiently print the output as a decimal
     number. Outputs can either be numeric, or ASCII-encoded.
 
-    Note that if counting is enabled after output has been triggered, the results
+    Note that if counting is enabled after output has been enabled, the results
     may be strange.
     
     Parameters
@@ -63,30 +65,29 @@ class BcdCounter(Component):
     Attributes
     ----------
     reset   : Signal(1), in. Resets the counter.
-    en      : Signal(1), in
-              The counter is incremented on each cycle where `en` is asserted,
+    inc     : Signal(1), in
+              The counter is incremented on each cycle where `inc` is asserted,
               otherwise retains its value.
-    trigger : Signal(1), in
-              One-shot trigger, start writing the message to output.
     ovf     : Signal(1), out
               `ovf` is asserted when the counter overflows
+
+    AbstractPrinter Attributes
+    ----------
     output  : Stream(8), out
               The data stream to write the message to.
     done    : High when stream is inactive, i.e., writing is done.
+    en      : Signal(1), in
+              One-shot trigger, start writing the message to output.
     """
 
-    def __init__(self, width, ascii):
-        super().__init__({
-            "reset": In(1),
-            "en": In(1),
-            "trigger": In(1),
-            "ovf": Out(1),
-            "output": Out(stream.Signature(unsigned(8))),
-            "done": Out(1, init=1),
-        })
+    reset: In(1)
+    inc: In(1)
+    ovf: Out(1)
 
+    def __init__(self, width, ascii):
         self._width = width
         self._ascii = ascii
+        super().__init__()
 
 
     def elaborate(self, unused_platform):
@@ -97,10 +98,10 @@ class BcdCounter(Component):
             m.submodules[f"digit_{d}"] = BcdDigit()
             m.submodules[f"digit_{d}"].reset = self.reset
             digits.append(m.submodules[f"digit_{d}"].digit)
-        m.submodules.digit_0.en = self.en
+        m.submodules.digit_0.inc = self.inc
 
         for d in range(1, self._width):
-            m.submodules[f"digit_{d}"].en = m.submodules[f"digit_{d-1}"].ovf
+            m.submodules[f"digit_{d}"].inc = m.submodules[f"digit_{d-1}"].ovf
         self.ovf = m.submodules[f"digit_{self._width-1}"].ovf
 
         # This really just needs to be ceil(log_2(10^width)) bits wide, but 4*width 
@@ -113,7 +114,7 @@ class BcdCounter(Component):
                     self.done.eq(Const(1)),
                 ]
                 m.d.sync += count.eq(Const(self._width-1))
-                with m.If(self.trigger):
+                with m.If(self.en):
                     m.next = "print"
                 with m.Else():
                     m.next = "idle"
