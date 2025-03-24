@@ -47,9 +47,5 @@ def test_limit_forward():
     sim.add_testbench(driver)
     sim.add_clock(1e-6)
 
-    with sim.write_vcd(sys.stdout):
-        sim.run()
+    sim.run()
 
-
-if __name__ == "__main__":
-    test_limit_forward()
