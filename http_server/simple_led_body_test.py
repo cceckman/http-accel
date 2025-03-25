@@ -1,9 +1,8 @@
-import sys
-
 from amaranth.sim import Simulator
 
 from simple_led_body import SimpleLedBody
 from stream_fixtures import StreamSender
+
 
 def test_simple_good_case():
     dut = SimpleLedBody()
@@ -31,8 +30,8 @@ def test_simple_good_case():
     sim.add_testbench(driver)
     sim.add_process(sender.send_passive(map(ord, "1A3B5C\r\n")))
 
-    with sim.write_vcd(sys.stdout):
-        sim.run_until(0.0001)
+    sim.run_until(0.0001)
+
 
 def test_send_two_bodies():
     dut = SimpleLedBody()
@@ -73,8 +72,8 @@ def test_send_two_bodies():
     sim.add_testbench(driver)
     sim.add_process(sender.send_passive(map(ord, "1A2B3C\r\n4D5E6F\r\n")))
 
-    with sim.write_vcd(sys.stdout):
-        sim.run_until(0.0001)
+    sim.run_until(0.0001)
+
 
 def test_invalid_hex():
     dut = SimpleLedBody()
@@ -95,11 +94,4 @@ def test_invalid_hex():
     sim.add_testbench(driver)
     sim.add_process(sender.send_passive(map(ord, "test")))
 
-    with sim.write_vcd(sys.stdout):
-        sim.run_until(0.0001)
-
-
-if __name__ == "__main__":
-    test_simple_good_case()
-    test_send_two_bodies()
-    test_invalid_hex()
+    sim.run_until(0.0001)

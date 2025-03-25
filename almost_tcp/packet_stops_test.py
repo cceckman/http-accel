@@ -4,57 +4,53 @@ from message_hdl import ReadPacketStop
 from message_host import Header, Packet, Flags
 from packet_fixtures import StreamCollector, PacketSender
 
-dut = ReadPacketStop(id=3)
 
+def test_packet_stops():
 
-def bench(dut,
-          body_collector: StreamCollector,
-          packet_collector: StreamCollector,
-          refpkt: Packet):
-    async def bench(ctx):
-        packet = dut.packet
-        while ctx.get(packet.stream_valid) != 1:
-            await ctx.tick()
-        assert ctx.get(packet.stream_valid)
-        assert ctx.get(packet.header.stream) == refpkt.header.stream
-        assert not ctx.get(packet.header_valid)
+    dut = ReadPacketStop(id=3)
 
-        while ctx.get(packet.header_valid) != 1:
-            await ctx.tick()
-        assert ctx.get(packet.stream_valid)
-        assert ctx.get(packet.header_valid)
-        hdr = refpkt.header
-        assert ctx.get(packet.header.flags.fin) == hdr.flags.fin
-        assert ctx.get(packet.header.flags.urg) == hdr.flags.urg
-        assert ctx.get(packet.header.flags.rst) == hdr.flags.rst
-        assert ctx.get(packet.header.flags.cwr) == hdr.flags.cwr
-        assert ctx.get(packet.header.flags.psh) == hdr.flags.psh
-        assert ctx.get(packet.header.flags.ack) == hdr.flags.ack
-        assert ctx.get(packet.header.flags.syn) == hdr.flags.syn
-        assert ctx.get(packet.header.flags.ack) == hdr.flags.ack
-        assert ctx.get(packet.header.stream) == hdr.stream
-        assert ctx.get(packet.header.length) == hdr.length
-        assert ctx.get(packet.header.window) == hdr.window
-        assert ctx.get(packet.header.seq) == hdr.seq
-        assert ctx.get(packet.header.ack) == hdr.ack
+    def bench(dut,
+              body_collector: StreamCollector,
+              packet_collector: StreamCollector,
+              refpkt: Packet):
+        async def bench(ctx):
+            packet = dut.packet
+            while ctx.get(packet.stream_valid) != 1:
+                await ctx.tick()
+            assert ctx.get(packet.stream_valid)
+            assert ctx.get(packet.header.stream) == refpkt.header.stream
+            assert not ctx.get(packet.header_valid)
 
-        # Wait until all the data are read:
-        while ctx.get(packet.header_valid):
-            await ctx.tick()
-        # Wait until the tail is drained too,
-        # which is probably at least one cycle later:
-        while len(packet_collector) < len(refpkt.encode()):
-            await ctx.tick()
+            while ctx.get(packet.header_valid) != 1:
+                await ctx.tick()
+            assert ctx.get(packet.stream_valid)
+            assert ctx.get(packet.header_valid)
+            hdr = refpkt.header
+            assert ctx.get(packet.header.flags.fin) == hdr.flags.fin
+            assert ctx.get(packet.header.flags.urg) == hdr.flags.urg
+            assert ctx.get(packet.header.flags.rst) == hdr.flags.rst
+            assert ctx.get(packet.header.flags.cwr) == hdr.flags.cwr
+            assert ctx.get(packet.header.flags.psh) == hdr.flags.psh
+            assert ctx.get(packet.header.flags.ack) == hdr.flags.ack
+            assert ctx.get(packet.header.flags.syn) == hdr.flags.syn
+            assert ctx.get(packet.header.flags.ack) == hdr.flags.ack
+            assert ctx.get(packet.header.stream) == hdr.stream
+            assert ctx.get(packet.header.length) == hdr.length
+            assert ctx.get(packet.header.window) == hdr.window
+            assert ctx.get(packet.header.seq) == hdr.seq
+            assert ctx.get(packet.header.ack) == hdr.ack
 
-        body_collector.assert_eq(refpkt.body)
-        packets_collector.assert_eq(refpkt.encode())
-    return bench
+            # Wait until all the data are read:
+            while ctx.get(packet.header_valid):
+                await ctx.tick()
+            # Wait until the tail is drained too,
+            # which is probably at least one cycle later:
+            while len(packet_collector) < len(refpkt.encode()):
+                await ctx.tick()
 
-
-# Doesn't appear to be a way to _remove_ a testbench;
-# I guess .reset() is "just" to allow a different initial state?
-if __name__ == "__main__":
-    import sys
+            body_collector.assert_eq(refpkt.body)
+            packets_collector.assert_eq(refpkt.encode())
+        return bench
 
     sim = Simulator(dut)
     body_collector = StreamCollector(
@@ -81,5 +77,4 @@ if __name__ == "__main__":
     sim.add_process(packets_collector.collect())
     sim.add_testbench(bench(dut, body_collector, packets_collector, p))
 
-    with sim.write_vcd(sys.stdout):
-        sim.run_until(0.0001)
+    sim.run_until(0.0001)

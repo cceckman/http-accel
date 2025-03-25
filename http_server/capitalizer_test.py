@@ -25,33 +25,27 @@ class CapUncap(Component):
         return m
 
 
-dut = CapUncap()
+def test_capitalizer():
 
+    dut = CapUncap()
 
-async def bench(ctx):
-    for i in range(0, 256):
-        ctx.set(dut.input, i)
-        await ctx.delay(1)
+    async def bench(ctx):
+        for i in range(0, 256):
+            ctx.set(dut.input, i)
+            await ctx.delay(1)
 
-        want_lower = want_upper = i
-        if chr(i).isascii():
-            want_lower = ord(chr(i).lower())
-            want_upper = ord(chr(i).upper())
+            want_lower = want_upper = i
+            if chr(i).isascii():
+                want_lower = ord(chr(i).lower())
+                want_upper = ord(chr(i).upper())
 
-        up = ctx.get(dut.upper)
-        assert up == want_upper, (i, want_upper, up)
-        lo = ctx.get(dut.lower)
-        assert lo == want_lower, (i, want_lower, lo)
+            up = ctx.get(dut.upper)
+            assert up == want_upper, (i, want_upper, up)
+            lo = ctx.get(dut.lower)
+            assert lo == want_lower, (i, want_lower, lo)
 
+    sim = Simulator(dut)
+    # sim.add_clock(1e-6)
+    sim.add_testbench(bench)
 
-sim = Simulator(dut)
-# sim.add_clock(1e-6)
-sim.add_testbench(bench)
-
-
-# Doesn't appear to be a way to _remove_ a testbench;
-# I guess .reset() is "just" to allow a different initial state?
-if __name__ == "__main__":
-    import sys
-    with sim.write_vcd(sys.stdout):
-        sim.run()
+    sim.run()

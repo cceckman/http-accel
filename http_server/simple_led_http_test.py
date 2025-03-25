@@ -62,6 +62,7 @@ def test_ok_handling():
     # Now that the test is done:
     collector.assert_eq(expected_output)
 
+
 def test_404_handling():
     dut = SimpleLedHttp()
     sim = Simulator(dut)
@@ -114,6 +115,7 @@ def test_404_handling():
 
     # Now that the test is done:
     collector.assert_eq(expected_output)
+
 
 def test_405_handling():
     dut = SimpleLedHttp()
@@ -168,9 +170,3 @@ def test_405_handling():
     # Now that the test is done:
     collector.assert_eq(expected_output)
 
-
-
-if __name__ == "__main__":
-    test_ok_handling()
-    test_404_handling()
-    test_405_handling()
