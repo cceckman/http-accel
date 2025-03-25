@@ -1,7 +1,10 @@
 """
 Test fixtures for sending and receiving in streams.
 """
+import sys
+import time
 import random
+import queue
 from typing import Iterable
 
 __all__ = ["StreamCollector", "StreamSender"]
@@ -51,6 +54,64 @@ class StreamCollector:
                     # Don't become un-ready until we transver a payload byte.
                     ready = ready | self.is_ready()
                 ctx.set(stream.ready, ready)
+        return collector
+
+    def collect_queue(self, q: queue.Queue[bytes], batch_size: int = 100,
+                      timeout=100):
+        """
+        Collect bytes into the provided queue.
+
+        Returns a coroutine suitable as a test process, which feeds bytes from
+        the stream into a queue.
+
+        Arguments
+        ---------
+        q:      the queue to write bytes into. Note that collect_queue does not
+                shut down the queue; the listener must have some other way to
+                respond.
+        batch_size: Default number of bytes to wait for before forwarding into
+                    the queue. If the batch_size is reached, the bytes received
+                    are immediately sent into the queue.
+        timeout:    Number of cycles to wait before forwarding more bytes into
+                    the queue, if fewer than batch_size are received.
+        """
+
+        stream = self._stream
+
+        async def collector(ctx):
+            ctx.set(stream.ready, 1)
+            countup = 0
+            batch = bytes()
+
+            async for clk_edge, rst_value, valid, payload in ctx.tick().sample(
+                    stream.valid, stream.payload):
+                if rst_value or (not clk_edge):
+                    continue
+                if valid == 1:
+                    # We just transferred a payload byte.
+                    batch += bytes([payload])
+                countup += 1
+
+                batch_exceeded = len(batch) >= batch_size
+                countup_exceeded = len(batch) > 0 and countup >= timeout
+                if batch_exceeded or countup_exceeded:
+                    # Send data.
+                    try:
+                        q.put(batch, block=False)
+                    except queue.Full:
+                        sys.stderr.write(
+                            f"queue full, saving {len(batch)} bytes "
+                            "for later\n"
+                        )
+                        countup = 0
+                        continue
+                    except Exception as e:
+                        sys.stderr.write(
+                            f"error in sending data from sim: {e}\n")
+                        return
+                    batch = bytes()
+                    countup = 0
+
         return collector
 
     def assert_eq(self, other):
@@ -110,6 +171,50 @@ class StreamSender:
             return random.randint(0, 1)
         else:
             return 1
+
+    def send_queue_active(self, q: queue.Queue[bytes], idle_ticks=100):
+        """
+        Returns a coroutine that drives the simulation while consuming
+        from the queue.
+
+        The provided coroutine returns when the queue is shut down
+        (python 3.12+?), or when self.done is set.
+
+        Arguments
+        ---------
+        queue:      Queue of bytes() to consume from.
+        idle_ticks: When no data is present, how many ticks to run before
+                    checking for more data.
+        """
+        stream = self._stream
+
+        async def sender(ctx):
+            while not self.done:
+                try:
+                    data = q.get_nowait()
+                except queue.Empty:
+                    sys.stderr.write("no data ready")
+                    data = bytes()
+                except queue.ShutDown:
+                    sys.stderr.write("send queue shut down")
+                    return
+
+                # Send the data we have.
+                for datum in data:
+                    while True:
+                        ctx.set(stream.valid, 1)
+                        ctx.set(stream.payload, ord(datum))
+                        ready = ctx.get(stream.ready)
+                        await ctx.tick()
+                        if ready == 1:
+                            # Just transferred a byte.
+                            # Go to the next datum.
+                            break
+                ctx.set(stream.valid, 0)
+                for _ in range(0, idle_ticks):
+                    await ctx.tick()
+
+        return sender
 
     def send_active(self, data: Iterable[int]):
         """

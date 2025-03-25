@@ -32,7 +32,7 @@ class AtcpReadBus(Component):
         return m
 
 
-def sim_main():
+def test_read_bus():
     dut = AtcpReadBus()
 
     sim = Simulator(dut)
@@ -84,8 +84,7 @@ def sim_main():
 
         # All data should be collected.
     sim.add_testbench(driver)
-    with sim.write_vcd(sys.stdout):
-        sim.run()
+    sim.run()
 
     # After the simulation completes -- the sender is done --
     # we still should only have collected only
@@ -93,7 +92,3 @@ def sim_main():
     three_collector.assert_eq(p3.body)
     # ...and the data from both stream-5 packets on stream 5.
     five_collector.assert_eq(2 * p5.body)
-
-
-if __name__ == "__main__":
-    sim_main()

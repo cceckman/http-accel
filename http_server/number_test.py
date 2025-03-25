@@ -4,84 +4,78 @@ from amaranth.sim import Simulator
 
 from number import Number
 
-dut = Number(16)
 
+def test_number():
 
-async def bench(ctx):
-    await run_test(ctx, 0)
-    await run_test(ctx, 3)
-    await run_test(ctx, 0xffff)
+    dut = Number(16)
 
-    # Randomized test:
-    for _ in range(20):
-        await run_test_backpressure(ctx, 1234)
+    async def bench(ctx):
+        await run_test(ctx, 0)
+        await run_test(ctx, 3)
+        await run_test(ctx, 0xffff)
 
+        # Randomized test:
+        for _ in range(20):
+            await run_test_backpressure(ctx, 1234)
 
-async def run_test(ctx, i):
-    assert ctx.get(dut.done)
-    assert ctx.get(dut.output.valid) == 0
+    async def run_test(ctx, i):
+        assert ctx.get(dut.done)
+        assert ctx.get(dut.output.valid) == 0
 
-    # Not yet enabled:
-    await ctx.tick()
-    assert ctx.get(dut.done)
-    assert ctx.get(dut.output.valid) == 0
-
-    ctx.set(dut.input, i)
-    ctx.set(dut.en, 1)
-    ctx.set(dut.output.ready, 1)
-    await ctx.changed(dut.done)
-    ctx.set(dut.en, 0)
-    buf = ""
-    while not ctx.get(dut.done):
-        if ctx.get(dut.output.valid):
-            got = ctx.get(dut.output.payload)
-            buf += chr(got)
+        # Not yet enabled:
         await ctx.tick()
+        assert ctx.get(dut.done)
+        assert ctx.get(dut.output.valid) == 0
 
-    assert ctx.get(dut.done)
-    assert not ctx.get(dut.output.valid)
-    want = str(i)
-    assert buf == want, (buf, want)
-
-
-async def run_test_backpressure(ctx, i):
-    assert ctx.get(dut.done)
-    assert ctx.get(dut.output.valid) == 0
-
-    # Not yet enabled:
-    await ctx.tick()
-    assert ctx.get(dut.done)
-    assert ctx.get(dut.output.valid) == 0
-
-    buf = ""
-    ctx.set(dut.input, i)
-    ctx.set(dut.en, 1)
-    while True:
-        if ctx.get(dut.output.valid) and ctx.get(dut.output.ready):
-            # A byte will be transferred this cycle.
-            # A byte was transferred.
-            got = ctx.get(dut.output.payload)
-            buf += chr(got)
-
-        await ctx.tick()
+        ctx.set(dut.input, i)
+        ctx.set(dut.en, 1)
+        ctx.set(dut.output.ready, 1)
+        await ctx.changed(dut.done)
         ctx.set(dut.en, 0)
-        ctx.set(dut.output.ready, random.randint(0, 1))
+        buf = ""
+        while not ctx.get(dut.done):
+            if ctx.get(dut.output.valid):
+                got = ctx.get(dut.output.payload)
+                buf += chr(got)
+            await ctx.tick()
 
-        if ctx.get(dut.done):
-            break
+        assert ctx.get(dut.done)
+        assert not ctx.get(dut.output.valid)
+        want = str(i)
+        assert buf == want, (buf, want)
 
-    assert not ctx.get(dut.output.valid)
-    want = str(i)
-    assert buf == want, (buf, want)
+    async def run_test_backpressure(ctx, i):
+        assert ctx.get(dut.done)
+        assert ctx.get(dut.output.valid) == 0
 
+        # Not yet enabled:
+        await ctx.tick()
+        assert ctx.get(dut.done)
+        assert ctx.get(dut.output.valid) == 0
 
-sim = Simulator(dut)
-sim.add_clock(1e-6)
-sim.add_testbench(bench)
+        buf = ""
+        ctx.set(dut.input, i)
+        ctx.set(dut.en, 1)
+        while True:
+            if ctx.get(dut.output.valid) and ctx.get(dut.output.ready):
+                # A byte will be transferred this cycle.
+                # A byte was transferred.
+                got = ctx.get(dut.output.payload)
+                buf += chr(got)
 
-# Doesn't appear to be a way to _remove_ a testbench;
-# I guess .reset() is "just" to allow a different initial state?
-if __name__ == "__main__":
-    import sys
-    with sim.write_vcd(sys.stdout):
-        sim.run()
+            await ctx.tick()
+            ctx.set(dut.en, 0)
+            ctx.set(dut.output.ready, random.randint(0, 1))
+
+            if ctx.get(dut.done):
+                break
+
+        assert not ctx.get(dut.output.valid)
+        want = str(i)
+        assert buf == want, (buf, want)
+
+    sim = Simulator(dut)
+    sim.add_clock(1e-6)
+    sim.add_testbench(bench)
+
+    sim.run()
