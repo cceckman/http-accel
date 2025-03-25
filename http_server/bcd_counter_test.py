@@ -1,6 +1,6 @@
 from amaranth.sim import Simulator
 
-from bcd_counter import BcdCounter
+from .bcd_counter import BcdCounter
 
 WIDTH = 5
 

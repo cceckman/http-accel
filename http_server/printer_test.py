@@ -1,7 +1,8 @@
 import random
+
 from amaranth.sim import Simulator
 
-from printer import Printer
+from .printer import Printer
 
 message = "Hello world!"
 

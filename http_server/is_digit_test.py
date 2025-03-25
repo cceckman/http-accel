@@ -1,6 +1,6 @@
 from amaranth.sim import Simulator
 
-from is_digit import IsDigit
+from .is_digit import IsDigit
 
 
 def test_exhaustive():

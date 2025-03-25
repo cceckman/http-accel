@@ -1,7 +1,8 @@
 import amaranth as am
 from amaranth.sim import Simulator
 from amaranth.lib.wiring import In, Out, Component
-from capitalizer import Capitalizer
+
+from .capitalizer import Capitalizer
 
 
 class CapUncap(Component):

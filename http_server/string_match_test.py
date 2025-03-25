@@ -1,7 +1,8 @@
 import random
+
 from amaranth.sim import Simulator
 
-from string_match import StringMatch
+from .string_match import StringMatch
 
 
 def test_match_sensitive():

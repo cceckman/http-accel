@@ -1,6 +1,6 @@
 from amaranth.sim import Simulator
 
-from simple_led_body import SimpleLedBody
+from .simple_led_body import SimpleLedBody
 from stream_fixtures import StreamSender
 
 

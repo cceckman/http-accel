@@ -1,8 +1,9 @@
 from amaranth.sim import Simulator
 
-from stream_mux import StreamMux
+from .stream_mux import StreamMux
 
-# Note: Must be a non power-of-two to be able to create a valid out-of-range test case.
+# Note: Must be a non power-of-two to be able to create a valid
+# out-of-range test case.
 TEST_MUX_WIDTH = 5
 
 

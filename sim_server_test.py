@@ -1,10 +1,12 @@
 
-from capitalizer import Capitalizer
 from amaranth import Module
 from amaranth.lib.wiring import Component, In, connect
 from amaranth.lib import stream
 from amaranth.lib import fifo
+
 from sim_server import SimServer
+
+from http_server.capitalizer import Capitalizer
 
 
 class DelayCapitalizer(Component):

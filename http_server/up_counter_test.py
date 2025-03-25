@@ -1,6 +1,6 @@
 from amaranth.sim import Simulator
 
-from up_counter import UpCounter
+from .up_counter import UpCounter
 
 
 def run_driver(driver):

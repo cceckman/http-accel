@@ -1,6 +1,6 @@
 from amaranth.sim import Simulator
 
-from bcd_counter import BcdDigit
+from .bcd_counter import BcdDigit
 
 
 def test_count():

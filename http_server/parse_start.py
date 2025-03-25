@@ -1,10 +1,10 @@
 from amaranth import Module
-from amaranth.lib.wiring import In, Out, Component, connect, flipped
+from amaranth.lib.wiring import In, Out, Component
 from amaranth.lib import stream
 
-from string_contains_match import StringContainsMatch
-from stream_demux import StreamDemux
+from .string_contains_match import StringContainsMatch
 import stream_utils
+
 
 class ParseStart(Component):
     """
@@ -68,16 +68,19 @@ class ParseStart(Component):
         resets.append(post_matcher.reset)
         m.d.comb += self.method[self.METHOD_POST].eq(post_matcher.accepted)
 
-        any_method_match = stream_utils.tree_or(m, [get_matcher.accepted, post_matcher.accepted])
+        any_method_match = stream_utils.tree_or(
+            m, [get_matcher.accepted, post_matcher.accepted])
         m.d.comb += self.method[0].eq(~any_method_match)
 
-        stream_utils.fanout_stream(m, method_stream, [get_matcher.input, post_matcher.input])
+        stream_utils.fanout_stream(
+            m, method_stream, [get_matcher.input, post_matcher.input])
 
         path_stream = stream.Signature(8).create()
         path_streams = []
         path_match = []
-        for i,path in enumerate(self._paths):
-            matcher = m.submodules[f"path_matchers_{i}"] = StringContainsMatch(path)
+        for i, path in enumerate(self._paths):
+            matcher = m.submodules[f"path_matchers_{i}"] = StringContainsMatch(
+                path)
             path_streams.append(matcher.input)
             resets.append(matcher.reset)
             m.d.comb += self.path[i+1].eq(matcher.accepted)
@@ -88,9 +91,12 @@ class ParseStart(Component):
 
         # TODO: #4 - If we want to get out of the stone age, should match more than HTTP/1.0
         #            That being said, silicon is kind of like a stone, right?
-        protocol_match = m.submodules.protocol_match = StringContainsMatch("HTTP/1.0")
-        m.d.comb += self.protocol[self.PROTOCOL_NO_MATCH].eq(~protocol_match.accepted) 
-        m.d.comb += self.protocol[self.PROTOCOL_HTTP1_0].eq(protocol_match.accepted) 
+        protocol_match = m.submodules.protocol_match = StringContainsMatch(
+            "HTTP/1.0")
+        m.d.comb += self.protocol[self.PROTOCOL_NO_MATCH].eq(
+            ~protocol_match.accepted)
+        m.d.comb += self.protocol[self.PROTOCOL_HTTP1_0].eq(
+            protocol_match.accepted)
 
         with m.FSM():
             with m.State("reset"):
@@ -134,7 +140,7 @@ class ParseStart(Component):
             with m.State("match_end"):
                 m.d.comb += self.input.ready.eq(1)
                 m.next = "match_end"
-                # TODO: #4 - Should error if this isn't \n, and setup to return a 
+                # TODO: #4 - Should error if this isn't \n, and setup to return a
                 # HTTP 400 Bad Request error.
                 with m.If(self.input.valid & (self.input.payload == ord('\n'))):
                     m.next = "done"
@@ -143,4 +149,3 @@ class ParseStart(Component):
                 m.d.sync += self.done.eq(1)
 
         return m
-

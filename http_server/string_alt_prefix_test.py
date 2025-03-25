@@ -1,8 +1,9 @@
 import random
+
 from amaranth.sim import Simulator
 
-from string_match import StringMatch
-from string_alt_match import StringAltMatch
+from .string_match import StringMatch
+from .string_alt_match import StringAltMatch
 
 
 def test_match():
@@ -62,7 +63,8 @@ def test_match():
         # m = await run_sequence(ctx, "/")
         # assert (m == 0) and (m is not None)
 
-        m = await run_sequence(ctx, "/style.css")
+        _m = await run_sequence(ctx, "/style.css")
+        # TODO: Incomplete implementation, does not have prefix matches
         # assert (m == 1) and (m is not None)
 
         # m = await run_sequence(ctx, "/stone.css")

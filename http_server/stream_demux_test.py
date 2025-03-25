@@ -1,6 +1,6 @@
 from amaranth.sim import Simulator
 
-from stream_demux import StreamDemux
+from .stream_demux import StreamDemux
 
 # Note: Must be a non power-of-two to be able to create a valid out-of-range
 # test case.

@@ -1,8 +1,9 @@
 import random
+
 from amaranth.sim import Simulator
 
-from string_match import StringMatch
-from string_alt_match import StringAltMatch
+from .string_match import StringMatch
+from .string_alt_match import StringAltMatch
 
 
 def run_sequence(input: str):
