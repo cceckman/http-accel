@@ -11,6 +11,8 @@ import sys
 strategies.register_type_strategy(Packet, arbitrary_packet())
 
 
+# TODO: Failed after moving to pytest.
+# We aren't using almost_tcp at the moment, so leaving it turned off
 @given(packets=...)
 def DISABLED_test_stream_send_structured_receive(packets: List[Packet]):
     """
