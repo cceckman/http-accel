@@ -60,7 +60,10 @@ class StringContainsMatch(Component):
                     c.eq(capitalizer.output),
             ]
 
-        m.d.comb += self.input.ready.eq(Const(1))
+        with m.If(self.reset):
+            m.d.comb += self.input.ready.eq(Const(0))
+        with m.Else():
+            m.d.comb += self.input.ready.eq(Const(1))
 
         shift_reg = [Signal(8) for _ in range(len(self._message))]
 
