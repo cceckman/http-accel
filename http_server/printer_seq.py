@@ -8,9 +8,6 @@ class PrinterSeq(AbstractPrinter):
     """
     When activated, activates sub-printers in sequence.
 
-    Does not claim the sequence of printers as submodules, so they 
-    must be owned by something else.
-
     AbstractPrinter Attributes
     ----------
     output: Stream(8), out
@@ -22,7 +19,6 @@ class PrinterSeq(AbstractPrinter):
     """
 
     def __init__(self, sequence):
-        import math
         self._sequence = sequence
         super().__init__()
 
