@@ -2,7 +2,7 @@ import random
 
 from amaranth.sim import Simulator
 
-from number import Number
+from .number import Number
 
 
 def test_number():

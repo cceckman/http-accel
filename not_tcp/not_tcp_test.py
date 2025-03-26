@@ -1,9 +1,7 @@
-import sys
-
 from amaranth.sim import Simulator
 
-from host import Packet, Flag
-from not_tcp import StreamStop
+from .host import Packet, Flag
+from .not_tcp import StreamStop
 from stream_fixtures import StreamSender, StreamCollector
 
 

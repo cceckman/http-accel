@@ -1,7 +1,8 @@
 import random
+
 from amaranth.sim import Simulator
 
-from http_match import HttpMatch
+from .http_match import HttpMatch
 
 
 def test_case():

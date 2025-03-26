@@ -1,6 +1,6 @@
 from amaranth.sim import Simulator
 
-from atoi import AtoI
+from .atoi import AtoI
 
 
 def run_driver(driver):

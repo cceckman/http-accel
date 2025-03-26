@@ -11,7 +11,7 @@ git+https://github.com/amaranth-lang/amaranth-soc@5c43cf58f15d9cd9c69ff83c979977
 
 # Support for amaranth 0.5;
 # This is merged to mainline
-git+https://github.com/greatscottgadgets/luna@1462160ba66302aaae69dca9e54fd71498a8b3ef
+git+https://github.com/greatscottgadgets/luna@0.2.0
 
 regex
 # Dev dependencies:

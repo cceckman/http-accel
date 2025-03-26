@@ -1,7 +1,8 @@
 from amaranth import Module, Signal, Array, Const
 from amaranth.lib.wiring import In, Out, Component
 from amaranth.lib import stream
-from capitalizer import Capitalizer
+
+from .capitalizer import Capitalizer
 
 
 class StringContainsMatch(Component):

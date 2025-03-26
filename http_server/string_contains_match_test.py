@@ -1,6 +1,6 @@
 from amaranth.sim import Simulator
 
-from string_contains_match import StringContainsMatch
+from .string_contains_match import StringContainsMatch
 from stream_fixtures import StreamSender
 
 

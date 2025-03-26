@@ -1,13 +1,12 @@
-from amaranth import Module, Const
+from amaranth import Module
 from amaranth.lib.wiring import In, Out, Component, connect
 
-from printer import Printer
-from parse_start import ParseStart
-from stream_mux import StreamMux
-from stream_demux import StreamDemux
-from string_match import StringMatch
-from string_contains_match import StringContainsMatch
-from simple_led_body import SimpleLedBody
+from .printer import Printer
+from .parse_start import ParseStart
+from .stream_mux import StreamMux
+from .stream_demux import StreamDemux
+from .string_contains_match import StringContainsMatch
+from .simple_led_body import SimpleLedBody
 
 import session
 
