@@ -16,9 +16,9 @@ class CountBody(AbstractPrinter):
     ok_responses: 0008
     error_responses: 0002
     ```
-    TODO: Due to bcd_counter adding leading zeros, this isn't make valid JSON, which
-       leading zeros as indicating that it's Octal. A hex counter could work, or
-       stripping the leading zeros.
+    TODO: Due to bcd_counter adding leading zeros, this can't make valid JSON,
+          as #s with leading zeros are interpreted as Octal. A hex counter 
+          could work, or stripping the leading zeros.
 
     Attributes:
     ----------
