@@ -25,10 +25,6 @@ class PrinterSeq(AbstractPrinter):
     def elaborate(self, _platform):
         m = Module()
 
-        m.d.comb += [
-            self.done.eq(self._sequence[-1].done),
-            self._sequence[0].en.eq(self.en),
-        ]
 
         m.submodules.output_mux = output_mux = StreamMux(mux_width=len(self._sequence), stream_width=8)
         m.d.comb += [
@@ -37,11 +33,17 @@ class PrinterSeq(AbstractPrinter):
             output_mux.out.ready.eq(self.output.valid),
         ]
 
+        # Sequence is done when the final sequence is done.
+        m.d.comb += [
+            self.done.eq(self._sequence[-1].done),
+        ]
         for i in range(0, len(self._sequence)):
-            m.submodules += self._sequence[i]
-
+            # Broadcast en to all of the printers in the sequence
             m.d.comb += self._sequence[i].en.eq(self.en)
 
+            # Point the output mux to the next item in the sequence as the
+            # previous ones finish
+            m.submodules += self._sequence[i]
             connect(m, self._sequence[i].output, output_mux.input[i])
             if i == 0:
                 with m.If(~self._sequence[1].done):
