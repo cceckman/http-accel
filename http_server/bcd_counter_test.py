@@ -4,7 +4,6 @@ from bcd_counter import BcdCounter
 
 WIDTH = 5
 
-
 def test_counter():
 
     async def run_test(ctx, value, backpressure):
@@ -15,12 +14,12 @@ def test_counter():
         assert ctx.get(dut.done)
         assert ctx.get(dut.output.valid) == 0
 
-        ctx.set(dut.en, 1)
+        ctx.set(dut.inc, 1)
         for _ in range(value):
             await ctx.tick()
 
-        ctx.set(dut.en, 0)
-        ctx.set(dut.trigger, 1)
+        ctx.set(dut.inc, 0)
+        ctx.set(dut.en, 1)
         ctx.set(dut.output.ready, 1)
         await ctx.tick()
         ctx.set(dut.trigger, 0)
