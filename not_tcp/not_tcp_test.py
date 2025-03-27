@@ -57,13 +57,19 @@ def test_single_stop():
         #
         # Wait for everything to be flushed:
         await ctx.tick().until(~dut.connected)
+
+        # TODO DO NOT MERGE
+        # Wait a couple ticks for end packets to complete
+        for i in range(10):
+            await ctx.tick()
         assert ctx.get(~dut.stop.inbound.active)
         assert ctx.get(~dut.bus.downstream.valid)
 
     sim.add_testbench(driver)
     sim.add_clock(1e-6)
 
-    sim.run()
+    with sim.write_vcd("testout.vcd"):
+        sim.run()
 
     # After simulation is complete...
     # The stop should have received all the packets for this stream:
@@ -76,14 +82,19 @@ def test_single_stop():
     packets = []
     while len(rcvd) > 0:
         (p, remainder) = Packet.from_bytes(rcvd)
-        packets += [p]
+        if p is not None:
+            packets += [p]
         rcvd = remainder
     bodies = bytes()
-    for packet in packets:
-        assert p.flags & Flag.TO_HOST
-        assert p.stream_id == 2
-        bodies += packet.body
-    assert packets[0].flags & Flag.START
-    assert packets[-1].flags & Flag.END
-    assert bodies == p4_body
+    for i in range(len(packets)):
+        packet = packets[i]
+        assert packet.stream_id == 2
+        assert packet.to_host
+        assert packet.start == (i == 0), f"start {packet.start} for packet {i}"
+        assert packet.end == (
+            i == len(packets)-1), f"end {packet.end} for packet {i}"
+        assert packet.to_host
 
+        bodies += packet.body
+
+    assert bodies == p4_body

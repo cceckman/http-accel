@@ -1,5 +1,3 @@
-import sys
-
 from amaranth.sim import Simulator
 
 from stream_utils import LimitForwarder
@@ -48,4 +46,3 @@ def test_limit_forward():
     sim.add_clock(1e-6)
 
     sim.run()
-
