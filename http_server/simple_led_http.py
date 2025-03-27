@@ -1,12 +1,13 @@
 from amaranth import Module
 from amaranth.lib.wiring import In, Out, Component, connect
 
-from .printer import Printer
+from .count_body import CountBody
 from .parse_start import ParseStart
-from .stream_mux import StreamMux
-from .stream_demux import StreamDemux
-from .string_contains_match import StringContainsMatch
+from .printer import Printer
 from .simple_led_body import SimpleLedBody
+from .stream_demux import StreamDemux
+from .stream_mux import StreamMux
+from .string_contains_match import StringContainsMatch
 
 import session
 
@@ -19,6 +20,9 @@ class SimpleLedHttp(Component):
 
     Expects a POST to the /led path with a body containing 8 hex
     characters corresponding to red, green, and blue LED values.
+
+    A GET from /count will return the number of requests and
+    responses.
 
     Attributes
     ----------
@@ -45,7 +49,8 @@ class SimpleLedHttp(Component):
 
         # TODO: #4 - Add packet count and RFC2324 endpoints
         MATCHED_LED_PATH = 1 # start_matcher path match is in the order the paths are connected.
-        start_matcher = m.submodules.start_matcher = ParseStart(["/led"])
+        MATCHED_COUNT_PATH = 2
+        start_matcher = m.submodules.start_matcher = ParseStart(["/led", "/count"])
         HTTP_PARSER_START = 0
         connect(m, start_matcher.input, parser_demux.outs[HTTP_PARSER_START])
 
@@ -67,8 +72,9 @@ class SimpleLedHttp(Component):
         m.d.comb += parser_demux.outs[HTTP_PARSER_SINK].ready.eq(1)
 
         ## Responders
-        response_mux = m.submodules.response_mux = StreamMux(mux_width=3, stream_width=8)
+        response_mux = m.submodules.response_mux = StreamMux(mux_width=4, stream_width=8)
         connect(m, response_mux.out, self.session.outbound.data)
+        count_body = m.submodules.count_body = CountBody()
 
         ok_response = "\r\n".join(
                 ["HTTP/1.0 200 OK",
@@ -85,6 +91,7 @@ class SimpleLedHttp(Component):
                 response_mux.select.eq(RESPONSE_OK),
                 parser_demux.select.eq(HTTP_PARSER_SINK),
                 ok_printer.en.eq(1),
+                count_body.inc_ok.eq(1),
         ]
 
         not_found_response = "\r\n".join(
@@ -102,6 +109,7 @@ class SimpleLedHttp(Component):
                 response_mux.select.eq(RESPONSE_404),
                 parser_demux.select.eq(HTTP_PARSER_SINK),
                 not_found_printer.en.eq(1),
+                count_body.inc_error.eq(1),
         ]
 
         not_allowed_response = "\r\n".join(
@@ -119,27 +127,43 @@ class SimpleLedHttp(Component):
                 response_mux.select.eq(RESPONSE_405),
                 parser_demux.select.eq(HTTP_PARSER_SINK),
                 not_allowed_printer.en.eq(1),
+                count_body.inc_error.eq(1),
         ]
 
+        RESPONSE_COUNT = 3
+        connect(m, count_body.output, response_mux.input[RESPONSE_COUNT])
+        send_count = [
+                response_mux.select.eq(RESPONSE_COUNT),
+                parser_demux.select.eq(HTTP_PARSER_SINK),
+                count_body.en.eq(1),
+        ]
 
         with m.FSM():
             with m.State("reset"):
                 m.d.comb += [
-                        start_matcher.reset.eq(1),
-                        skip_headers.reset.eq(1),
-                        led_body_handler.reset.eq(1),
+                    start_matcher.reset.eq(1),
+                    skip_headers.reset.eq(1),
                 ]
                 m.next = "idle"
             with m.State("idle"):
-                m.d.comb += start_matcher.reset.eq(0)
-                m.d.sync += parser_demux.select.eq(HTTP_PARSER_START)
-                m.d.sync += response_mux.select.eq(RESPONSE_OK)
+                m.d.comb += [
+                    start_matcher.reset.eq(0),
+                    skip_headers.reset.eq(0),
+                ]
+                m.d.sync += [
+                    parser_demux.select.eq(HTTP_PARSER_START),
+                    response_mux.select.eq(RESPONSE_OK),
+                ]
                 m.next = "idle"
                 with m.If(self.session.inbound.active):
                     m.next = "parsing_start"
-                    m.d.sync += self.session.outbound.active.eq(1)
+                    m.d.sync += [
+                        self.session.outbound.active.eq(1),
+                        count_body.inc_requests.eq(1),
+                    ]
             with m.State("parsing_start"):
                 m.next = "parsing_start"
+                m.d.sync += count_body.inc_requests.eq(0)
                 # start line matched successfully
                 with m.If(start_matcher.done):
                     m.next = "parsing_header"
@@ -147,14 +171,20 @@ class SimpleLedHttp(Component):
             with m.State("parsing_header"):
                 m.next = "parsing_header"
                 with m.If(skip_headers.accepted):
-                    with m.If(start_matcher.method[start_matcher.METHOD_POST] & 
-                              start_matcher.path[MATCHED_LED_PATH]):
-                        m.next = "parsing_led_body"
-                        m.d.sync += parser_demux.select.eq(HTTP_PARSER_LED_BODY)
-                    with m.Elif(start_matcher.method[start_matcher.METHOD_GET] & 
-                              start_matcher.path[MATCHED_LED_PATH]):
-                        m.next = "writing"
-                        m.d.sync += send_405
+                    with m.If(start_matcher.path[MATCHED_LED_PATH]):
+                        with m.If(start_matcher.method[start_matcher.METHOD_POST]):
+                            m.next = "parsing_led_body"
+                            m.d.sync += parser_demux.select.eq(HTTP_PARSER_LED_BODY)
+                        with m.Else():
+                            m.next = "writing"
+                            m.d.sync += send_405
+                    with m.Elif(start_matcher.path[MATCHED_COUNT_PATH]):
+                        with m.If(start_matcher.method[start_matcher.METHOD_GET]):
+                            m.next = "writing_count_ok"
+                            m.d.sync += send_ok
+                        with m.Else():
+                            m.next = "writing"
+                            m.d.sync += send_405
                     with m.Else():
                         m.next = "writing"
                         m.d.sync += send_404
@@ -173,17 +203,30 @@ class SimpleLedHttp(Component):
                     # TODO: #4 - Should send a different error code besides 404 if the
                     #            body fails to parse before end-of-session.
                     m.d.sync += send_404
+            with m.State("writing_count_ok"):
+                m.next = "writing_count_ok"
+                m.d.sync += [
+                    ok_printer.en.eq(0),
+                    count_body.inc_ok.eq(0)
+                ]
+                with m.If(ok_printer.done):
+                    m.d.sync += send_count
+                    m.next = "writing"
             with m.State("writing"):
                 m.next = "writing"
                 m.d.sync += [
                         ok_printer.en.eq(0),
                         not_found_printer.en.eq(0),
                         not_allowed_printer.en.eq(0),
+                        count_body.en.eq(0),
                         self.session.outbound.active.eq(1),
+                        count_body.inc_ok.eq(0),
+                        count_body.inc_error.eq(0),
                 ]
                 with m.If(  ((response_mux.select == RESPONSE_OK) & ok_printer.done)
                           | ((response_mux.select == RESPONSE_404) & not_found_printer.done)
-                          | ((response_mux.select == RESPONSE_405) & not_allowed_printer.done)):
+                          | ((response_mux.select == RESPONSE_405) & not_allowed_printer.done)
+                          | ((response_mux.select == RESPONSE_COUNT) & count_body.done)):
                     m.d.sync += self.session.outbound.active.eq(0)
                     # Can finish writing before all the input is collected,
                     # since a bad request migh trigger an early 404. Wait

@@ -22,7 +22,7 @@ def test_counter():
         ctx.set(dut.en, 1)
         ctx.set(dut.output.ready, 1)
         await ctx.tick()
-        ctx.set(dut.trigger, 0)
+        ctx.set(dut.en, 0)
 
         buf = ""
         while not ctx.get(dut.done):

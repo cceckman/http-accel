@@ -1,8 +1,8 @@
 from amaranth import Module, Signal
 from amaranth.lib.wiring import connect
 
-from printer import AbstractPrinter
-from stream_mux import StreamMux
+from .printer import AbstractPrinter
+from .stream_mux import StreamMux
 
 class PrinterSeq(AbstractPrinter):
     """

@@ -1,7 +1,7 @@
 import sys
 from amaranth.sim import Simulator
 
-from count_body import CountBody
+from .count_body import CountBody
 from stream_fixtures import StreamCollector
 
 def test_count_body():
