@@ -2,7 +2,7 @@ from amaranth import Module, Signal, unsigned, Array, Const
 from amaranth.lib.wiring import In, Out, Component
 from amaranth.lib import stream
 
-from printer import AbstractPrinter
+from .printer import AbstractPrinter
 
 class BcdDigit(Component):
     """
@@ -110,12 +110,11 @@ class BcdCounter(AbstractPrinter):
 
         with m.FSM():
             with m.State("idle"):
-                m.d.comb += [
-                    self.done.eq(Const(1)),
-                ]
+                m.d.comb += self.done.eq(Const(1)),
                 m.d.sync += count.eq(Const(self._width-1))
                 with m.If(self.en):
                     m.next = "print"
+                    m.d.comb += self.done.eq(Const(0)),
                 with m.Else():
                     m.next = "idle"
             with m.State("print"):

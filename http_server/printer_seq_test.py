@@ -1,8 +1,8 @@
 import sys
 from amaranth.sim import Simulator
 
-from printer import Printer
-from printer_seq import PrinterSeq
+from .printer import Printer
+from .printer_seq import PrinterSeq
 from stream_fixtures import StreamCollector
 
 

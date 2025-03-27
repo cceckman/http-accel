@@ -1,10 +1,10 @@
 from amaranth import Module
 from amaranth.lib.wiring import In
 
-from printer import AbstractPrinter
-from printer import Printer
-from printer_seq import PrinterSeq
-from bcd_counter import BcdCounter
+from .printer import AbstractPrinter
+from .printer import Printer
+from .printer_seq import PrinterSeq
+from .bcd_counter import BcdCounter
 
 class CountBody(AbstractPrinter):
     """

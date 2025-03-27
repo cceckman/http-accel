@@ -147,5 +147,7 @@ class ParseStart(Component):
             with m.State("done"):
                 m.next = "done"
                 m.d.sync += self.done.eq(1)
+                with m.If(self.reset):
+                    m.next = "reset"
 
         return m
