@@ -47,10 +47,10 @@ class SimpleLedHttp(Component):
         parser_demux = m.submodules.parser_demux = StreamDemux(mux_width=4, stream_width=8)
         connect(m, self.session.inbound.data, parser_demux.input)
 
-        # TODO: #4 - Add packet count and RFC2324 endpoints
         MATCHED_LED_PATH = 1 # start_matcher path match is in the order the paths are connected.
         MATCHED_COUNT_PATH = 2
-        start_matcher = m.submodules.start_matcher = ParseStart(["/led", "/count"])
+        MATCHED_COFFEE_PATH = 3
+        start_matcher = m.submodules.start_matcher = ParseStart(["/led", "/count", "/coffee"])
         HTTP_PARSER_START = 0
         connect(m, start_matcher.input, parser_demux.outs[HTTP_PARSER_START])
 
@@ -72,7 +72,7 @@ class SimpleLedHttp(Component):
         m.d.comb += parser_demux.outs[HTTP_PARSER_SINK].ready.eq(1)
 
         ## Responders
-        response_mux = m.submodules.response_mux = StreamMux(mux_width=4, stream_width=8)
+        response_mux = m.submodules.response_mux = StreamMux(mux_width=5, stream_width=8)
         connect(m, response_mux.out, self.session.outbound.data)
         count_body = m.submodules.count_body = CountBody()
 
@@ -130,7 +130,25 @@ class SimpleLedHttp(Component):
                 count_body.inc_error.eq(1),
         ]
 
-        RESPONSE_COUNT = 3
+        teapot_response = "\r\n".join(
+                ["HTTP/1.0 418 I'm a teapot",
+                    "Host: Fomu",
+                    "Content-Type: text/plain; charset=utf-8",
+                    "",
+                    "",
+                    "short and stout"]) + "\r\n"
+        teapot_response = teapot_response.encode("utf-8")
+        teapot_printer = m.submodules.teapot_printer = Printer(teapot_response)
+        RESPONSE_TEAPOT = 3
+        connect(m, teapot_printer.output, response_mux.input[RESPONSE_TEAPOT])
+        send_teapot = [
+                response_mux.select.eq(RESPONSE_TEAPOT),
+                parser_demux.select.eq(HTTP_PARSER_SINK),
+                teapot_printer.en.eq(1),
+                count_body.inc_error.eq(1),
+        ]
+
+        RESPONSE_COUNT = 4
         connect(m, count_body.output, response_mux.input[RESPONSE_COUNT])
         send_count = [
                 response_mux.select.eq(RESPONSE_COUNT),
@@ -185,6 +203,14 @@ class SimpleLedHttp(Component):
                         with m.Else():
                             m.next = "writing"
                             m.d.sync += send_405
+                    with m.Elif(start_matcher.path[MATCHED_COFFEE_PATH]):
+                        with m.If(start_matcher.method[start_matcher.METHOD_GET] 
+                                  | start_matcher.method[start_matcher.METHOD_BREW]): 
+                            m.next = "writing"
+                            m.d.sync += send_teapot
+                        with m.Else():
+                            m.next = "writing"
+                            m.d.sync += send_405
                     with m.Else():
                         m.next = "writing"
                         m.d.sync += send_404
@@ -218,6 +244,7 @@ class SimpleLedHttp(Component):
                         ok_printer.en.eq(0),
                         not_found_printer.en.eq(0),
                         not_allowed_printer.en.eq(0),
+                        teapot_printer.en.eq(0),
                         count_body.en.eq(0),
                         self.session.outbound.active.eq(1),
                         count_body.inc_ok.eq(0),
@@ -226,7 +253,8 @@ class SimpleLedHttp(Component):
                 with m.If(  ((response_mux.select == RESPONSE_OK) & ok_printer.done)
                           | ((response_mux.select == RESPONSE_404) & not_found_printer.done)
                           | ((response_mux.select == RESPONSE_405) & not_allowed_printer.done)
-                          | ((response_mux.select == RESPONSE_COUNT) & count_body.done)):
+                          | ((response_mux.select == RESPONSE_COUNT) & count_body.done)
+                          | ((response_mux.select == RESPONSE_TEAPOT) & teapot_printer.done)):
                     m.d.sync += self.session.outbound.active.eq(0)
                     # Can finish writing before all the input is collected,
                     # since a bad request migh trigger an early 404. Wait
