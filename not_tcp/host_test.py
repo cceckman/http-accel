@@ -72,8 +72,11 @@ def test_capitalize_server():
         assert received_body == b"HELLO WORLD"
 
         received_body = bytes()
-        p2 = Packet(flags=Flag.END, stream_id=1, body=b"Goodbye for now")
+        # TODO: For now, we have to send an explicit "end" packet
+        p2 = Packet(stream_id=1, body=b"Goodbye for now")
+        p3 = Packet(flags=Flag.END, stream_id=1)
         srv.send(p2.to_bytes())
+        srv.send(p3.to_bytes())
         for i in range(100):
             received_bytes += srv.recv()
             (packet, remainder) = Packet.from_bytes(received_bytes)
