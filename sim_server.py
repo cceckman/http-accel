@@ -58,13 +58,17 @@ class SimServer:
         """
         assert self._sim_thread is not None, (
             "Simulation is not running; enter the context")
-        if count is None:
-            return self._data_on.get()
-        else:
-            buffer = bytes()
-            while len(buffer) < count:
-                buffer += self._data_out.get()
-            return buffer
+        buffer = bytes()
+        while True:
+            try:
+                buffer += self._data_out.get(timeout=0.1)
+            except queue.Empty:
+                pass
+            if not self._sim_thread.is_alive():
+                # TODO: Raise exception?
+                return buffer
+            if count is None or len(buffer) >= count:
+                return buffer
 
     def __enter__(self):
         """
@@ -94,13 +98,16 @@ class SimServer:
     def _run_sim(self, sim):
         def runnable():
             try:
-                print("running simulator")
+                sys.stderr.write("running simulator\n")
+                # Uncomment this line, and indent the next, to get debug info.
+                # with sim.write_vcd("testout.vcd"):
                 sim.run()
-                print("simulation complete")
+                sys.stderr.write("simulation complete\n")
             except Exception as e:
-                sys.stderr.write(f"error in Amaranth simulation: {e}")
+                sys.stderr.write(f"error in Amaranth simulation: {e}\n")
                 # Try to force shutdown:
                 self._sender.done = True
+                raise e
 
         return runnable
 

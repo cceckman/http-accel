@@ -193,17 +193,18 @@ class StreamSender:
                 try:
                     data = q.get_nowait()
                 except queue.Empty:
-                    sys.stderr.write("no data ready")
                     data = bytes()
                 except queue.ShutDown:
-                    sys.stderr.write("send queue shut down")
                     return
+
+                if isinstance(data, str):
+                    data = str.encode(data, "utf-8")
 
                 # Send the data we have.
                 for datum in data:
                     while True:
                         ctx.set(stream.valid, 1)
-                        ctx.set(stream.payload, ord(datum))
+                        ctx.set(stream.payload, datum)
                         ready = ctx.get(stream.ready)
                         await ctx.tick()
                         if ready == 1:

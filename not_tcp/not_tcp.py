@@ -141,11 +141,18 @@ class StreamStop(Component):
         connect(m, input_limiter.outbound, input_buffer.w_stream)
         connect(m, output_buffer.r_stream, output_limiter.inbound)
 
-        # We get "most of a packet": everything but the stream ID.
-        read_len = Signal(8)
         flags_layout = UnionLayout({"bytes": unsigned(8), "flags": Flags})
-        flags = Signal(flags_layout)
+
+        # Header from inbound packet:
+        read_len = Signal(8)
+        read_flags = Signal(flags_layout)
         stream = Signal(8)
+
+        # Flags for outbound packet:
+        send_flags = Signal(flags_layout)
+        m.d.comb += send_flags.flags.to_host.eq(1)
+        sent_start = Signal(1)
+        sent_end = Signal(1)
 
         # Connection-state handling:
         m.d.comb += [self.stop.inbound.active.eq(0),
@@ -154,8 +161,10 @@ class StreamStop(Component):
             with m.State("closed"):
                 m.next = "closed"
                 with m.If(
-                        flags.flags.start &
+                        read_flags.flags.start &
                         (stream == Const(self._stream_id))):
+                    m.d.sync += sent_start.eq(0)
+                    m.d.sync += sent_end.eq(0)
                     m.next = "requested"
             with m.State("requested"):
                 m.next = "requested"
@@ -168,10 +177,10 @@ class StreamStop(Component):
                     self.stop.inbound.active.eq(1),
                     self.connected.eq(1),
                 ]
-                with m.If(~self.stop.outbound.active):
+                with m.If(sent_end):
                     m.next = "server-done"
                 with m.Elif(
-                        flags.flags.end &
+                        read_flags.flags.end &
                         (stream == Const(self._stream_id))):
                     # Client has marked end-of-stream.
                     # Consume the input buffer.
@@ -179,7 +188,7 @@ class StreamStop(Component):
             with m.State("client-done"):
                 m.next = "client-done"
                 m.d.comb += [self.connected.eq(1)]
-                with m.If(~self.stop.outbound.active):
+                with m.If(sent_end):
                     # Server is also done, and flushed.
                     m.next = "flush"
             with m.State("server-done"):
@@ -187,7 +196,7 @@ class StreamStop(Component):
                 m.d.comb += [self.connected.eq(1),
                              self.stop.inbound.active.eq(1)]
                 with m.If(
-                    ~flags.flags.end &
+                    ~read_flags.flags.end &
                         (stream == Const(self._stream_id))):
                     m.next = "flush"
             with m.State("flush"):
@@ -210,7 +219,7 @@ class StreamStop(Component):
                 with m.If(bus.valid):
                     m.d.sync += stream.eq(bus.payload)
                     # Zero the flags, so we don't get a false start/end
-                    m.d.sync += flags.eq(0)
+                    m.d.sync += read_flags.eq(0)
                     m.next = "read-len"
             with m.State("read-len"):
                 m.next = "read-len"
@@ -223,7 +232,7 @@ class StreamStop(Component):
                 m.d.comb += bus.ready.eq(1)
                 with m.If(bus.valid):
                     # At the cycle edge, capture the flags byte...
-                    m.d.sync += flags.bytes.eq(bus.payload)
+                    m.d.sync += read_flags.bytes.eq(bus.payload)
                     with m.If(stream == Const(self._stream_id)):
                         # maybe block until accepted.
                         # TODO: This introduces an extra cycle of delay
@@ -255,24 +264,36 @@ class StreamStop(Component):
                     ]
                 m.d.comb += input_limiter.start.eq(0)
                 with m.If(input_limiter.done):
+                    # Clear the input from the last packet, so we don't
+                    # think that we have one pending until we read it again.
+                    m.d.sync += [read_len.eq(0), stream.eq(self._stream_id+1)]
                     m.next = "read-stream"
 
+        # Cases in which we want to send a packet:
+        data_to_send = output_buffer.r_level > 0
+        not_yet_started = self.connected & ~sent_start
+        not_yet_ended = (self.connected &
+                         ~self.stop.outbound.active & ~sent_end)
         with m.FSM(name="write"):
             bus = self.bus.downstream
             write_len = Signal(8)
 
             with m.State("write-stream"):
                 m.next = "write-stream"
-                with m.If((output_buffer.r_level > 0)):
+
+                with m.If(data_to_send | not_yet_started | not_yet_ended):
                     # We're ready to start sending...
                     m.d.comb += bus.payload.eq(self._stream_id)
                     m.d.comb += bus.valid.eq(1)
-                    m.d.sync += write_len.eq(output_buffer.r_level)
-                    # The output is ready, and we have data to send.
                     # Lock in the level as the length of this packet.
+                    # We may send a short (zero-length) packet
+                    # to start or end the connection.
+                    m.d.sync += write_len.eq(output_buffer.r_level)
                     with m.If(bus.ready):
                         # Only transition if we are ready-to-send.
                         m.next = "write-len"
+                with m.Else():
+                    m.d.comb += bus.valid.eq(0)
             with m.State("write-len"):
                 m.next = "write-len"
                 # Write the length.
@@ -282,9 +303,18 @@ class StreamStop(Component):
                     m.next = "write-flags"
             with m.State("write-flags"):
                 m.next = "write-flags"
-                # TODO: Session state bits in flags.
+                # Send the "end" bit if:
+                # - we haven't yet sent one,
+                # - the server has closed the connection, and
+                # - we have sent all the data from the server
+                # This generates an extra empty "end" packet-
+                # noisy, but correct.
+                send_end = not_yet_ended & (output_buffer.r_level == 0)
+
                 m.d.comb += [
-                    bus.payload.eq(0b111),
+                    send_flags.flags.start.eq(~sent_start),
+                    send_flags.flags.end.eq(send_end),
+                    bus.payload.eq(send_flags.bytes),
                     bus.valid.eq(1),
                 ]
                 m.d.comb += [
@@ -292,6 +322,10 @@ class StreamStop(Component):
                     output_limiter.start.eq(1),
                 ]
                 with m.If(bus.ready):
+                    m.d.sync += [
+                        sent_start.eq(1),
+                        sent_end.eq(send_end),
+                    ]
                     m.next = "write-body"
             with m.State("write-body"):
                 m.next = "write-body"
