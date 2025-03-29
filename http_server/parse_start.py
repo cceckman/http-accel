@@ -37,6 +37,7 @@ class ParseStart(Component):
     METHOD_NO_MATCH = 0
     METHOD_GET = 1
     METHOD_POST = 2
+    METHOD_BREW = 3
 
     PROTOCOL_NO_MATCH = 0
     PROTOCOL_HTTP1_0 = 1
@@ -46,7 +47,7 @@ class ParseStart(Component):
             "input": In(stream.Signature(8)),
             "reset": In(1),
             "done": Out(1),
-            "method": Out(3),
+            "method": Out(4),
             "path": Out(len(paths)+1),
             "protocol": Out(2),
         })
@@ -68,12 +69,16 @@ class ParseStart(Component):
         resets.append(post_matcher.reset)
         m.d.comb += self.method[self.METHOD_POST].eq(post_matcher.accepted)
 
+        brew_matcher = m.submodules.brew_matcher = StringContainsMatch("BREW")
+        resets.append(brew_matcher.reset)
+        m.d.comb += self.method[self.METHOD_BREW].eq(brew_matcher.accepted)
+
         any_method_match = stream_utils.tree_or(
-            m, [get_matcher.accepted, post_matcher.accepted])
+            m, [get_matcher.accepted, post_matcher.accepted, brew_matcher.accepted])
         m.d.comb += self.method[0].eq(~any_method_match)
 
         stream_utils.fanout_stream(
-            m, method_stream, [get_matcher.input, post_matcher.input])
+            m, method_stream, [get_matcher.input, post_matcher.input, brew_matcher.input])
 
         path_stream = stream.Signature(8).create()
         path_streams = []
