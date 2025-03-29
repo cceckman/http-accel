@@ -17,4 +17,5 @@ regex
 # Dev dependencies:
 flake8
 pytest
+pytest-asyncio
 hypothesis

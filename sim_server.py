@@ -1,5 +1,6 @@
 import queue
 import sys
+import traceback
 from threading import Thread
 
 from amaranth.sim import Simulator
@@ -98,25 +99,26 @@ class SimServer:
     def _run_sim(self, sim):
         def runnable():
             try:
-                sys.stderr.write("running simulator\n")
                 # Uncomment this line, and indent the next, to get debug info.
                 # with sim.write_vcd("testout.vcd"):
                 sim.run()
-                sys.stderr.write("simulation complete\n")
             except Exception as e:
                 sys.stderr.write(f"error in Amaranth simulation: {e}\n")
                 # Try to force shutdown:
-                self._sender.done = True
+                self._sender.die = True
                 raise e
 
         return runnable
 
-    def __exit__(self, *args, **kwargs):
+    def __exit__(self, exe_type, exe_val, exe_traceback, **kwargs):
         assert self._sim_thread is not None
         # Shutting down the data input should shut down the simulator;
         # the data input is driving the tick.
         # self._data_in.shutdown()
         # .shutdown() is not available on python3.11,
         # so we have to use a flag.
-        self._sender.done = True
+        if exe_traceback is not None:
+            traceback.print_tb(exe_traceback)
+
+        self._sender.die = True
         self._sim_thread.join()

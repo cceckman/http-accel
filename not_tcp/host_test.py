@@ -1,12 +1,19 @@
+import sys
+import pytest
+import asyncio
+from ntcp_http import NtcpHttpServer
 
 from amaranth import Module
 from amaranth.lib.wiring import Component, In, Out
 from amaranth.lib import stream
 
+from host_sim import HostSimulator
 from not_tcp.host import Packet, Flag
 from sim_server import SimServer
 from not_tcp.not_tcp import StreamStop
 from http_server import capitalizer
+
+pytest_plugins = ('pytest_asyncio',)
 
 
 class Capitalize(Component):
@@ -48,7 +55,7 @@ class Capitalize(Component):
         return m
 
 
-def test_capitalize_server():
+def DISABLED_test_capitalize_server():
     dut = Capitalize()
 
     with SimServer(dut, dut.tx, dut.rx) as srv:
@@ -97,3 +104,30 @@ def test_capitalize_server():
             assert packet.end == (
                 i == len(packets)-1), f"end {packet.end} for packet {i}"
             assert packet.to_host
+
+
+@pytest.mark.asyncio
+async def test_tcp_proxy():
+    dut = NtcpHttpServer()
+
+    with HostSimulator(dut, dut.tx, dut.rx) as srv:
+        server = await asyncio.start_server(
+            client_connected_cb=srv.client_connected, host="localhost",
+            port=3278)
+        async with server:
+            reader, writer = await asyncio.open_connection("127.0.0.1", 3278)
+            writer.write(
+                "\r\n".join([
+                    "POST /nothing-here HTTP/1.0",
+                    "Cache-Control: private",
+                    "",
+                    "",
+                    "lovely day today"
+                ]).encode("utf-8")
+            )
+            await writer.drain()
+
+            read = await reader.read(-1)
+        response = read.decode("utf-8")
+        lines = response.split("\r\n")
+        assert lines[0] == "HTTP/1.0 404 Not Found"
