@@ -58,10 +58,6 @@ def test_single_stop():
         # Wait for everything to be flushed:
         await ctx.tick().until(~dut.connected)
 
-        # TODO DO NOT MERGE
-        # Wait a couple ticks for end packets to complete
-        for i in range(10):
-            await ctx.tick()
         assert ctx.get(~dut.stop.inbound.active)
         assert ctx.get(~dut.bus.downstream.valid)
 
