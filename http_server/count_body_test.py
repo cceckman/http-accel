@@ -6,7 +6,7 @@ from stream_fixtures import StreamCollector
 
 def test_count_body():
     dut = CountBody()
-    expected = "requests: 0003 ok_responses: 0002 error_responses: 0001"
+    expected = "requests: 0003 ok_responses: 0002 error_responses: 0001\r\n"
 
     sim = Simulator(dut)
     sim.add_clock(1e-6)

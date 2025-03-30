@@ -55,7 +55,8 @@ class CountBody(AbstractPrinter):
         m.submodules.printer = printer = PrinterSeq([
             Printer("requests: "), count_req, 
             Printer(" ok_responses: "), count_ok,
-            Printer(" error_responses: "), count_error
+            Printer(" error_responses: "), count_error,
+            Printer("\r\n")
         ])
 
         m.d.comb += [

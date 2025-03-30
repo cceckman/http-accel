@@ -16,12 +16,10 @@ def test_ok_handling():
              "User-Agent: test-agent\r\n"
              "Content-Type: text/plain\r\n"
              "\r\n"
-             "\r\n"
              "123456\r\n")
     expected_output = ("HTTP/1.0 200 OK\r\n"
                        "Host: Fomu\r\n"
                        "Content-Type: text/plain; charset=utf-8\r\n"
-                       "\r\n"
                        "\r\n"
                        "👍\r\n")
 
@@ -57,12 +55,11 @@ def test_ok_handling():
 
     # Doesn't appear to be a way to _remove_ a testbench;
     # I guess .reset() is "just" to allow a different initial state?
-    with sim.write_vcd(sys.stdout):
-        sim.run_until(0.001)
+    #with sim.write_vcd("test.vcd"):
+    sim.run_until(0.0005)
 
     # Now that the test is done:
     collector.assert_eq(expected_output)
-
 
 def test_404_handling():
     dut = SimpleLedHttp()
@@ -74,12 +71,10 @@ def test_404_handling():
              "User-Agent: evil-agent\r\n"
              "Content-Type: text/bad\r\n"
              "\r\n"
-             "\r\n"
              "123456\r\n")
     expected_output = ("HTTP/1.0 404 Not Found\r\n"
                        "Host: Fomu\r\n"
                        "Content-Type: text/plain; charset=utf-8\r\n"
-                       "\r\n"
                        "\r\n"
                        "👎\r\n")
 
@@ -125,12 +120,10 @@ def test_405_handling():
              "User-Agent: evil-agent\r\n"
              "Content-Type: text/bad\r\n"
              "\r\n"
-             "\r\n"
              "What're your LEDs doing?\r\n")
     expected_output = ("HTTP/1.0 405 Method Not Allowed\r\n"
                        "Host: Fomu\r\n"
                        "Content-Type: text/plain; charset=utf-8\r\n"
-                       "\r\n"
                        "\r\n"
                        "🛑\r\n")
 
@@ -175,13 +168,11 @@ def test_count_handling():
              "User-Agent: test-agent\r\n"
              "Content-Type: text/plain\r\n"
              "\r\n"
-             "\r\n"
              "123456\r\n")
     error_input = ("BREW /cocoa HTTP/1.0\r\n"
              "Host: test\r\n"
              "User-Agent: test-agent\r\n"
              "Content-Type: text/plain\r\n"
-             "\r\n"
              "\r\n"
              "With marshmallows, please\r\n")
     count_input = ("GET /count HTTP/1.0\r\n"
@@ -189,28 +180,24 @@ def test_count_handling():
              "User-Agent: test-agent\r\n"
              "Content-Type: text/plain\r\n"
              "\r\n"
-             "\r\n"
              "\r\n")
 
     expected_output = ("HTTP/1.0 200 OK\r\n"
                        "Host: Fomu\r\n"
                        "Content-Type: text/plain; charset=utf-8\r\n"
                        "\r\n"
-                       "\r\n"
                        "👍\r\n"
                        "HTTP/1.0 404 Not Found\r\n"
                        "Host: Fomu\r\n"
                        "Content-Type: text/plain; charset=utf-8\r\n"
-                       "\r\n"
                        "\r\n"
                        "👎\r\n"
                        "HTTP/1.0 200 OK\r\n"
                        "Host: Fomu\r\n"
                        "Content-Type: text/plain; charset=utf-8\r\n"
                        "\r\n"
-                       "\r\n"
                        "👍\r\n"
-                       "requests: 0003 ok_responses: 0002 error_responses: 0001")
+                       "requests: 0003 ok_responses: 0002 error_responses: 0001\r\n")
 
     async def driver(ctx):
 
@@ -263,12 +250,10 @@ def test_coffee_handling():
              "User-Agent: evil-agent\r\n"
              "Content-Type: text/bad\r\n"
              "\r\n"
-             "\r\n"
              "Black, medium roast Ethiopian, pour over\r\n")
     expected_output = ("HTTP/1.0 418 I'm a teapot\r\n"
                        "Host: Fomu\r\n"
                        "Content-Type: text/plain; charset=utf-8\r\n"
-                       "\r\n"
                        "\r\n"
                        "short and stout\r\n")
 
