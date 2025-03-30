@@ -68,8 +68,20 @@ class StringContainsMatch(Component):
 
         shift_reg = [Signal(8) for _ in range(len(self._message))]
 
+        latched_accept = Signal(1)
+
+        matched = Signal(len(self._message))
+        m.d.comb += matched[0].eq(c == self._message[len(self._message)-1])
+        for i in range(1,len(self._message)):
+            m.d.comb += matched[i].eq(shift_reg[i-1] == self._message[len(self._message)-i-1])
+
+        with m.If(matched.all()):
+            m.d.sync += latched_accept.eq(1)
+        m.d.comb += self.accepted.eq(matched.all() | latched_accept)
+
+
         with m.If(self.reset):
-            m.d.sync += self.accepted.eq(Const(0))
+            m.d.sync += latched_accept.eq(0)
             for i in range(len(self._message)):
                 m.d.sync += shift_reg[i].eq(0)
         with m.Elif(self.input.valid):
@@ -77,19 +89,5 @@ class StringContainsMatch(Component):
                 m.d.sync += shift_reg[i+1].eq(shift_reg[i])
             m.d.sync += shift_reg[0].eq(c)
 
-        matched = [Signal(1) for _ in range(len(self._message))]
-        for i in range(len(self._message)):
-            m.d.comb += matched[i].eq(shift_reg[i] == self._message[len(self._message)-i-1])
-
-        # Note: Doing a linear reduction here. Could be a problem for very long
-        #       matches. If it ends up being an issue, switch to a tree.
-        matched_chain = [Signal(1) for _ in range(len(self._message)+1)]
-        m.d.comb += matched_chain[0].eq(Const(1))
-        for i in range(len(self._message)):
-            m.d.comb += matched_chain[i+1].eq(matched_chain[i] & matched[i])
-
-        # Latch acceptance
-        with m.If(matched_chain[len(self._message)]):
-            m.d.sync += self.accepted.eq(1)
         
         return m

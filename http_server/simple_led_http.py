@@ -81,7 +81,6 @@ class SimpleLedHttp(Component):
                     "Host: Fomu",
                     "Content-Type: text/plain; charset=utf-8",
                     "",
-                    "",
                     '👍']) + "\r\n"
         ok_response = ok_response.encode("utf-8")
         ok_printer = m.submodules.ok_printer = Printer(ok_response)
@@ -98,7 +97,6 @@ class SimpleLedHttp(Component):
                 ["HTTP/1.0 404 Not Found",
                     "Host: Fomu",
                     "Content-Type: text/plain; charset=utf-8",
-                    "",
                     "",
                     '👎']) + "\r\n"
         not_found_response = not_found_response.encode("utf-8")
@@ -117,7 +115,6 @@ class SimpleLedHttp(Component):
                     "Host: Fomu",
                     "Content-Type: text/plain; charset=utf-8",
                     "",
-                    "",
                     '🛑']) + "\r\n"
         not_allowed_response = not_allowed_response.encode("utf-8")
         not_allowed_printer = m.submodules.not_allowed_printer = Printer(not_allowed_response)
@@ -134,7 +131,6 @@ class SimpleLedHttp(Component):
                 ["HTTP/1.0 418 I'm a teapot",
                     "Host: Fomu",
                     "Content-Type: text/plain; charset=utf-8",
-                    "",
                     "",
                     "short and stout"]) + "\r\n"
         teapot_response = teapot_response.encode("utf-8")
