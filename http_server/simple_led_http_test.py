@@ -197,7 +197,7 @@ def test_count_handling():
                        "Content-Type: text/plain; charset=utf-8\r\n"
                        "\r\n"
                        "👍\r\n"
-                       "requests: 0003 ok_responses: 0002 error_responses: 0001")
+                       "requests: 0003 ok_responses: 0002 error_responses: 0001\r\n")
 
     async def driver(ctx):
 
