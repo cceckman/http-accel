@@ -147,6 +147,10 @@ class StreamSender:
     # Flag bit, signaled when all bytes from all packets have been delivered.
     done: bool = False
 
+    # Flag bit, to kill the send_queue_active thread
+    die: bool = False
+
+
     def __init__(self,
                  stream,
                  random_delay=False,
@@ -189,13 +193,17 @@ class StreamSender:
         stream = self._stream
 
         async def sender(ctx):
-            while not self.done:
+            while not self.die:
                 try:
                     data = q.get_nowait()
                 except queue.Empty:
                     data = bytes()
                 except queue.ShutDown:
+                    sys.stderr.write("queue is shut down\n")
                     return
+                except Exception as e:
+                    sys.stderr.write(f"unexpected exception: {e}\n")
+                    raise e
 
                 if isinstance(data, str):
                     data = str.encode(data, "utf-8")

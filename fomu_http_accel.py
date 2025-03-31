@@ -57,5 +57,5 @@ class FomuHttpAccelerator(am.Elaboratable):
 
 if __name__ == "__main__":
     FomuPVTPlatform().build(FomuHttpAccelerator(),
-                            # do_program=True,
+                            do_program=True,
                             verbose=True)
