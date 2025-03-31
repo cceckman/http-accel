@@ -64,8 +64,7 @@ def test_single_stop():
     sim.add_testbench(driver)
     sim.add_clock(1e-6)
 
-    with sim.write_vcd("testout.vcd"):
-        sim.run()
+    sim.run()
 
     # After simulation is complete...
     # The stop should have received all the packets for this stream:
@@ -77,9 +76,10 @@ def test_single_stop():
     rcvd = collect_bus.body
     packets = []
     while len(rcvd) > 0:
+        # All data should be packetized.
         (p, remainder) = Packet.from_bytes(rcvd)
-        if p is not None:
-            packets += [p]
+        assert p is not None, f"remaining data: {rcvd}"
+        packets += [p]
         rcvd = remainder
     bodies = bytes()
     for i in range(len(packets)):
