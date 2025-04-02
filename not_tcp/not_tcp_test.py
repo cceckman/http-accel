@@ -78,8 +78,9 @@ def test_single_stop():
     while len(rcvd) > 0:
         # All data should be packetized.
         (p, remainder) = Packet.from_bytes(rcvd)
-        assert p is not None, f"remaining data: {rcvd}"
-        packets += [p]
+        assert (p is not None) or (len(remainder) == 0)
+        if p is not None:
+            packets += [p]
         rcvd = remainder
     bodies = bytes()
     for i in range(len(packets)):

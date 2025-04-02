@@ -15,6 +15,8 @@ from amaranth.lib.fifo import SyncFIFOBuffered
 import session
 from stream_utils import LimitForwarder
 
+BUFFER_SIZE = 256
+
 
 class Flags(Struct):
     """
@@ -119,7 +121,7 @@ class InboundStop(Component):
         m = Module()
         connected = self.connected
         input_buffer = m.submodules.input_buffer = SyncFIFOBuffered(
-            width=8, depth=256)
+            width=8, depth=BUFFER_SIZE)
         m.d.comb += [
             self.stop.data.payload.eq(input_buffer.r_stream.payload),
             self.stop.data.valid.eq(input_buffer.r_stream.valid),
@@ -236,9 +238,8 @@ class OutboundStop(Component):
     def elaborate(self, platform):
         m = Module()
 
-        # Each of these is big enough to buffer one full packet.
         output_buffer = m.submodules.output_buffer = SyncFIFOBuffered(
-            width=8, depth=256)
+            width=8, depth=BUFFER_SIZE)
 
         m.d.comb += [
             output_buffer.w_stream.payload.eq(self.stop.data.payload),
@@ -254,23 +255,33 @@ class OutboundStop(Component):
             output_limiter.start.eq(0),
             self.bus.valid.eq(0)
         ]
-        connect(m, output_buffer.r_stream, output_limiter.inbound)
-
+        m.d.comb += [
+            self.bus.payload.eq(output_limiter.outbound.payload),
+            self.bus.valid.eq(output_limiter.outbound.valid),
+            output_limiter.outbound.ready.eq(self.bus.ready),
+        ]
         flags_layout = UnionLayout({"bytes": unsigned(8), "flags": Flags})
 
         # Flags for outbound packet:
         send_flags = Signal(flags_layout)
         m.d.sync += send_flags.flags.to_host.eq(1)
         send_len = Signal(8)
+        # Pad up to 64 bytes of zeros, to ensure packet delivery.
+        pad_len = Signal(8)
+
+        # Invariants:
+        # - End is set iff ~active and the buffer is empty.
+        # - We enter disconnected iff End is clear,
+        #   i.e. End has been sent.
 
         # Cases in which we want to send a packet:
         with m.FSM(name="write"):
             with m.State("disconnected"):
+                m.d.comb += Assert(~send_flags.flags.end)
                 m.next = "disconnected"
                 with m.If(self.stop.active):
                     # Immediately send a "start" packet.
                     m.d.sync += send_flags.flags.start.eq(1)
-                    m.d.sync += send_flags.flags.end.eq(0)
                     m.d.sync += self.connected.eq(1)
                     m.next = "write-stream"
 
@@ -287,17 +298,27 @@ class OutboundStop(Component):
                     # Lock in the level as the length of this packet.
                     # We may send a short (zero-length) packet
                     # to start or end the connection.
-                    m.d.sync += send_len.eq(output_buffer.r_level)
+                    m.d.sync += send_len.eq(output_buffer.level)
                     # We send an explicit empty END packet.
                     m.d.sync += send_flags.flags.end.eq(
                         ~self.stop.active &
-                        (output_buffer.r_level == Const(0)))
+                        (output_buffer.level == Const(0)))
                     with m.If(self.bus.ready):
                         m.next = "write-len"
             with m.State("write-len"):
                 m.next = "write-len"
                 m.d.comb += self.bus.payload.eq(send_len)
                 m.d.comb += self.bus.valid.eq(1)
+
+                # Precompute padding on a cycle where we don't otherwise
+                # have much to do.
+                # In theory we only need to pad to 64...
+                # but that still doesn't get us the stop byte...
+                # so, double-padding?
+                m.d.sync += [
+                    pad_len.eq(128 - ((3 + send_len) % 64))
+                ]
+
                 with m.If(self.bus.ready):
                     m.next = "write-flags"
             with m.State("write-flags"):
@@ -314,22 +335,35 @@ class OutboundStop(Component):
                     m.next = "write-body"
             with m.State("write-body"):
                 m.next = "write-body"
+                connect(m, output_buffer.r_stream, output_limiter.inbound)
+
+                with m.If(output_limiter.done):
+                    m.next = "zero-pad"
+                    m.d.comb += [
+                        output_limiter.count.eq(pad_len),
+                        output_limiter.start.eq(1),
+                        output_limiter.inbound.payload.eq(0),
+                        output_limiter.inbound.valid.eq(1),
+                    ]
+
+            with m.State("zero-pad"):
+                m.next = "zero-pad"
                 m.d.comb += [
-                    self.bus.payload.eq(output_limiter.outbound.payload),
-                    self.bus.valid.eq(output_limiter.outbound.valid),
-                    output_limiter.outbound.ready.eq(self.bus.ready),
+                    output_limiter.inbound.payload.eq(0),
+                    output_limiter.inbound.valid.eq(1),
                 ]
 
                 with m.If(output_limiter.done):
-                    m.d.sync += [
-                        send_flags.flags.start.eq(0),
-                        send_flags.flags.end.eq(0),
-                    ]
                     with m.If(send_flags.flags.end):
                         m.d.sync += self.connected.eq(0)
                         m.next = "disconnected"
                     with m.Else():
                         m.next = "write-stream"
+                    # In either branch, we've sent a start packet.
+                    m.d.sync += [
+                        send_flags.flags.start.eq(0),
+                        send_flags.flags.end.eq(0),
+                    ]
 
         return m
 

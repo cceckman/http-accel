@@ -79,7 +79,7 @@ class Packet:
         )
 
     def __len__(self):
-        return len(Header) + len(self.body)
+        return Header.length() + len(self.body)
 
     def header(self) -> Header:
         assert self.stream_id >= 0
@@ -92,6 +92,11 @@ class Packet:
 
     @classmethod
     def from_bytes(cls, buf: bytes) -> (Optional["Packet"], bytes):
+        # Trim null bytes that prefix a packet.
+        # This is (retroactively) why we start with stream ID 1!
+        while len(buf) > 0 and buf[0] == 0:
+            buf = buf[1:]
+
         if len(buf) < Header.length():
             return None, buf
         header = Header.from_bytes(buf[:Header.length()])
@@ -171,17 +176,30 @@ class StreamProxy:
             consumed = (buffer_len - len(buffer))
             total_bytes += consumed
             if p is None:
-                continue
-            buffer = rem
-            if packet_count == 0:
-                assert p.start
-            packet_count += 1
-            if not p.to_host:
-                # Ignore the packet
-                continue
-            writer.write(p.body)
-            await writer.drain()
-            if p.end:
-                break
+                if consumed > 0:
+                    olog.debug(
+                        f"consumed {consumed} padding zeros")
+
+                # No packet to consume. Get more data.
+                rcvd = self.recv()  # Has its own timeout, but isn't async. So:
+                await asyncio.sleep(0)
+                buffer += rcvd
+            else:
+                olog.debug(f"consumed {consumed} bytes")
+
+                if packet_count == 0:
+                    assert p.start
+                packet_count += 1
+                if not p.to_host:
+                    # Ignore the packet
+                    continue
+                writer.write(p.body)
+                await writer.drain()
+                if p.end:
+                    break
+        olog.info(
+            f"device closed outbound connection for client {number}")
+
+        # TODO: Handle multiple streams.
         writer.close()
         await writer.wait_closed()
