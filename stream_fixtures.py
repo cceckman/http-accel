@@ -81,7 +81,8 @@ class StreamCollector:
         stream = self._stream
 
         async def collector(ctx):
-            ctx.set(stream.ready, 1)
+            ready = self.is_ready()
+            ctx.set(stream.ready, ready)
             countup = 0
             batch = bytes()
 
@@ -89,9 +90,12 @@ class StreamCollector:
                     stream.valid, stream.payload):
                 if rst_value or (not clk_edge):
                     continue
-                if valid == 1:
+                if ready == 1 and valid == 1:
                     # We just transferred a payload byte.
                     batch += bytes([payload])
+                    ready = self.is_ready()
+                else:
+                    ready = ready | self.is_ready()
                 countup += 1
 
                 batch_exceeded = len(batch) >= batch_size
