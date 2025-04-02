@@ -6,7 +6,7 @@ Each packet includes a short header: flags, a session ID, and a body-length.
 
 """
 
-from amaranth import Module, Signal, unsigned, Const
+from amaranth import Module, Signal, unsigned, Const, Assert
 from amaranth.lib.wiring import Component, In, Out, Signature, connect
 from amaranth.lib import stream
 from amaranth.lib.data import UnionLayout, Struct
@@ -89,6 +89,251 @@ class BusRoot(Component):
         return m
 
 
+class InboundStop(Component):
+    """
+    Inbound half of an nTCP stop.
+
+    Parameters
+    ---------
+    stream_id
+
+
+    Attributes:
+    ----------
+    stop: inbound session interface
+    accepted: "active" from the outbound direction
+    connected: indicator that the session has connected in at least one direction
+    upstream: inbound bus interface
+    """
+
+    stop: Out(session.SessionSignature())
+    accepted: In(1)
+    connected: Out(1)
+    bus: In(stream.Signature(8))
+
+    def __init__(self, stream_id):
+        super().__init__()
+        self._stream_id = Const(stream_id)
+
+    def elaborate(self, platform):
+        m = Module()
+        connected = self.connected
+        input_buffer = m.submodules.input_buffer = SyncFIFOBuffered(
+            width=8, depth=256)
+        m.d.comb += [
+            self.stop.data.payload.eq(input_buffer.r_stream.payload),
+            self.stop.data.valid.eq(input_buffer.r_stream.valid),
+            input_buffer.r_stream.ready.eq(self.stop.data.ready),
+        ]
+
+        input_limiter = m.submodules.input_limiter = LimitForwarder(
+            width=8, max_count=256)
+
+        # Default state: don't transfer any data.
+        m.d.comb += [
+            input_limiter.start.eq(0),
+        ]
+        connect(m, input_limiter.outbound, input_buffer.w_stream)
+
+        flags_layout = UnionLayout({"bytes": unsigned(8), "flags": Flags})
+        # Header from inbound packet:
+        read_len = Signal(8)
+        read_flags = Signal(flags_layout)
+        read_stream = Signal(8)
+
+        this_stop = read_stream == self._stream_id
+
+        with m.FSM(name="read"):
+            bus = self.bus
+            with m.State("read-stream"):
+                m.next = "read-stream"
+                m.d.comb += bus.ready.eq(1)
+                m.d.sync += read_flags.eq(0)
+                m.d.sync += read_len.eq(0)
+                with m.If(bus.valid):
+                    m.d.sync += read_stream.eq(bus.payload)
+                    m.next = "read-len"
+            with m.State("read-len"):
+                m.next = "read-len"
+                m.d.comb += bus.ready.eq(1)
+                with m.If(bus.valid):
+                    m.d.sync += read_len.eq(bus.payload)
+                    m.next = "read-flags"
+            with m.State("read-flags"):
+                m.next = "read-flags"
+                m.d.comb += bus.ready.eq(1)
+                with m.If(bus.valid):
+                    m.d.sync += read_flags.bytes.eq(bus.payload)
+                    is_start = flags_layout(bus.payload).flags.start
+
+                    # If the packet is for this channel
+                    # and we're already connected or it's a start panic,
+                    # handle it in the local path
+                    with m.If(this_stop & (connected | is_start)):
+                        with m.If(is_start):
+                            m.d.sync += self.stop.active.eq(1)
+                            m.next = "await-accept"
+                        with m.Else():
+                            m.d.comb += input_limiter.count.eq(read_len)
+                            m.d.comb += input_limiter.start.eq(1)
+                            m.next = "read-body"
+                    # Otherwise, ignore the packet.
+                    with m.Else():
+                        # TODO: Forward data to downstream stop if stream
+                        # doesn't match.
+                        # For now: if this isn't for our stream,
+                        # proceed to read (and discard)
+                        m.d.comb += input_limiter.count.eq(read_len)
+                        m.d.comb += input_limiter.start.eq(1)
+                        m.next = "read-body"
+            with m.State("await-accept"):
+                m.next = "await-accept"
+                # Flags handling. We only do this if we've matched the stop ID.
+                m.d.comb += Assert(this_stop)
+                m.d.comb += Assert(read_flags.flags.start)
+
+                with m.If(self.accepted):
+                    m.d.sync += connected.eq(1)
+                    m.d.comb += input_limiter.count.eq(read_len)
+                    m.d.comb += input_limiter.start.eq(1)
+                    m.next = "read-body"
+
+            with m.State("read-body"):
+                m.next = "read-body"
+                m.d.comb += [
+                    input_limiter.inbound.payload.eq(self.bus.payload),
+                    input_limiter.inbound.valid.eq(self.bus.valid),
+                    self.bus.ready.eq(input_limiter.inbound.ready),
+                ]
+                with m.If(read_stream != self._stream_id):
+                    # Disconnect from the input buffer, just discard the data:
+                    m.d.comb += [
+                        input_buffer.w_stream.valid.eq(0),
+                        input_limiter.outbound.ready.eq(1),
+                    ]
+                m.d.comb += input_limiter.start.eq(0)
+                with m.If(input_limiter.done):
+                    m.next = "read-stream"
+                    m.d.sync += [read_len.eq(0), read_stream.eq(0)]
+                    with m.If(read_flags.flags.end):
+                        m.d.sync += [
+                            self.stop.active.eq(0),
+                            connected.eq(0)
+                        ]
+
+        return m
+
+
+class OutboundStop(Component):
+    stop: In(session.SessionSignature())
+    bus: Out(stream.Signature(8))
+    connected: Out(1)
+
+    def __init__(self, stream_id):
+        super().__init__()
+        self._stream_id = Const(stream_id)
+
+    def elaborate(self, platform):
+        m = Module()
+
+        # Each of these is big enough to buffer one full packet.
+        output_buffer = m.submodules.output_buffer = SyncFIFOBuffered(
+            width=8, depth=256)
+
+        m.d.comb += [
+            output_buffer.w_stream.payload.eq(self.stop.data.payload),
+            output_buffer.w_stream.valid.eq(self.stop.data.valid),
+            self.stop.data.ready.eq(output_buffer.w_stream.ready),
+        ]
+
+        output_limiter = m.submodules.output_limiter = LimitForwarder(
+            width=8, max_count=256)
+
+        # Default state: don't transfer any data.
+        m.d.comb += [
+            output_limiter.start.eq(0),
+            self.bus.valid.eq(0)
+        ]
+        connect(m, output_buffer.r_stream, output_limiter.inbound)
+
+        flags_layout = UnionLayout({"bytes": unsigned(8), "flags": Flags})
+
+        # Flags for outbound packet:
+        send_flags = Signal(flags_layout)
+        m.d.sync += send_flags.flags.to_host.eq(1)
+        send_len = Signal(8)
+
+        # Cases in which we want to send a packet:
+        with m.FSM(name="write"):
+            with m.State("disconnected"):
+                m.next = "disconnected"
+                with m.If(self.stop.active):
+                    # Immediately send a "start" packet.
+                    m.d.sync += send_flags.flags.start.eq(1)
+                    m.d.sync += send_flags.flags.end.eq(0)
+                    m.d.sync += self.connected.eq(1)
+                    m.next = "write-stream"
+
+            with m.State("write-stream"):
+                m.next = "write-stream"
+
+                with m.If(
+                        send_flags.flags.start
+                        | ~self.stop.active
+                        | output_buffer.level > 0):
+                    # Start sending.
+                    m.d.comb += self.bus.payload.eq(self._stream_id)
+                    m.d.comb += self.bus.valid.eq(1)
+                    # Lock in the level as the length of this packet.
+                    # We may send a short (zero-length) packet
+                    # to start or end the connection.
+                    m.d.sync += send_len.eq(output_buffer.r_level)
+                    # We send an explicit empty END packet.
+                    m.d.sync += send_flags.flags.end.eq(
+                        ~self.stop.active &
+                        (output_buffer.r_level == Const(0)))
+                    with m.If(self.bus.ready):
+                        m.next = "write-len"
+            with m.State("write-len"):
+                m.next = "write-len"
+                m.d.comb += self.bus.payload.eq(send_len)
+                m.d.comb += self.bus.valid.eq(1)
+                with m.If(self.bus.ready):
+                    m.next = "write-flags"
+            with m.State("write-flags"):
+                m.next = "write-flags"
+                m.d.comb += [
+                    self.bus.payload.eq(send_flags.bytes),
+                    self.bus.valid.eq(1),
+                ]
+                with m.If(self.bus.ready):
+                    m.d.comb += [
+                        output_limiter.count.eq(send_len),
+                        output_limiter.start.eq(1),
+                    ]
+                    m.next = "write-body"
+            with m.State("write-body"):
+                m.next = "write-body"
+                m.d.comb += [
+                    self.bus.payload.eq(output_limiter.outbound.payload),
+                    self.bus.valid.eq(output_limiter.outbound.valid),
+                    output_limiter.outbound.ready.eq(self.bus.ready),
+                ]
+
+                with m.If(output_limiter.done):
+                    m.d.sync += [
+                        send_flags.flags.start.eq(0),
+                        send_flags.flags.end.eq(0),
+                    ]
+                    with m.If(send_flags.flags.end):
+                        m.d.sync += self.connected.eq(0)
+                        m.next = "disconnected"
+                    with m.Else():
+                        m.next = "write-stream"
+
+        return m
+
+
 class StreamStop(Component):
     """
     A stop for a Not TCP stream on the local bus.
@@ -101,7 +346,7 @@ class StreamStop(Component):
 
     Attributes
     ----------
-    session: Inner interface
+    stop: Inner interface
     bus: Bus interface
 
     connected:  Debug/test interface indicating connection status.
@@ -119,217 +364,36 @@ class StreamStop(Component):
     def elaborate(self, platform):
         m = Module()
 
-        # Each of these is big enough to buffer one full packet.
-        input_buffer = m.submodules.input_buffer = SyncFIFOBuffered(
-            width=8, depth=256)
-        output_buffer = m.submodules.output_buffer = SyncFIFOBuffered(
-            width=8, depth=256)
+        inbound_inner = m.submodules.inbound = InboundStop(self._stream_id)
+        inbound_outer = self.stop.inbound
+        outbound_inner = m.submodules.outbound = OutboundStop(self._stream_id)
+        outbound_outer = self.stop.outbound
 
-        connect(m, self.stop.outbound.data, output_buffer.w_stream)
-        connect(m, input_buffer.r_stream, self.stop.inbound.data)
-        input_limiter = m.submodules.input_limiter = LimitForwarder(
-            width=8, max_count=256)
-        output_limiter = m.submodules.output_limiter = LimitForwarder(
-            width=8, max_count=256)
-
-        # Default state: don't transfer any data.
         m.d.comb += [
-            self.stop.inbound.active.eq(0),
-            input_limiter.start.eq(0),
-            output_limiter.start.eq(0),
+            self.connected.eq(
+                inbound_inner.connected | outbound_inner.connected
+            ),
+
+            inbound_outer.active.eq(inbound_inner.stop.active),
+            inbound_outer.data.payload.eq(inbound_inner.stop.data.payload),
+            inbound_outer.data.valid.eq(inbound_inner.stop.data.valid),
+            inbound_inner.stop.data.ready.eq(inbound_outer.data.ready),
+
+            outbound_inner.stop.active.eq(outbound_outer.active),
+            outbound_inner.stop.data.payload.eq(
+                outbound_outer.data.payload),
+            outbound_inner.stop.data.valid.eq(outbound_outer.data.valid),
+            outbound_outer.data.ready.eq(outbound_inner.stop.data.ready),
+
+            inbound_inner.accepted.eq(outbound_inner.stop.active),
+
+            inbound_inner.bus.payload.eq(self.bus.upstream.payload),
+            inbound_inner.bus.valid.eq(self.bus.upstream.valid),
+            self.bus.upstream.ready.eq(inbound_inner.bus.ready),
+
+            self.bus.downstream.payload.eq(outbound_inner.bus.payload),
+            self.bus.downstream.valid.eq(outbound_inner.bus.valid),
+            outbound_inner.bus.ready.eq(self.bus.downstream.ready),
         ]
-        connect(m, input_limiter.outbound, input_buffer.w_stream)
-        connect(m, output_buffer.r_stream, output_limiter.inbound)
 
-        flags_layout = UnionLayout({"bytes": unsigned(8), "flags": Flags})
-
-        # Header from inbound packet:
-        read_len = Signal(8)
-        read_flags = Signal(flags_layout)
-        stream = Signal(8)
-
-        # Flags for outbound packet:
-        send_flags = Signal(flags_layout)
-        m.d.comb += send_flags.flags.to_host.eq(1)
-        sent_start = Signal(1)
-        sent_end = Signal(1)
-
-        # Connection-state handling:
-        m.d.comb += [self.stop.inbound.active.eq(0),
-                     self.connected.eq(0)]
-        with m.FSM(name="connection"):
-            with m.State("closed"):
-                m.next = "closed"
-                with m.If(
-                        read_flags.flags.start &
-                        (stream == Const(self._stream_id))):
-                    m.d.sync += sent_start.eq(0)
-                    m.d.sync += sent_end.eq(0)
-                    m.next = "requested"
-            with m.State("requested"):
-                m.next = "requested"
-                m.d.comb += [self.stop.inbound.active.eq(1)]
-                with m.If(self.stop.outbound.active):
-                    m.next = "open"
-            with m.State("open"):
-                m.next = "open"
-                m.d.comb += [
-                    self.stop.inbound.active.eq(1),
-                    self.connected.eq(1),
-                ]
-                with m.If(sent_end):
-                    m.next = "server-done"
-                with m.Elif(
-                        read_flags.flags.end &
-                        (stream == Const(self._stream_id))):
-                    # Client has marked end-of-stream.
-                    # Consume the input buffer.
-                    m.next = "client-done"
-            with m.State("client-done"):
-                m.next = "client-done"
-                m.d.comb += [self.connected.eq(1)]
-                with m.If(sent_end):
-                    # Server is also done, and flushed.
-                    m.next = "flush"
-            with m.State("server-done"):
-                m.next = "server-done"
-                m.d.comb += [self.connected.eq(1),
-                             self.stop.inbound.active.eq(1)]
-                with m.If(
-                    ~read_flags.flags.end &
-                        (stream == Const(self._stream_id))):
-                    m.next = "flush"
-            with m.State("flush"):
-                m.next = "flush"
-                m.d.comb += [self.connected.eq(1)]
-                with m.If(
-                    (read_len == Const(0)) &
-                    (input_buffer.r_level == Const(0)) &
-                    (output_buffer.r_level == Const(0))
-                ):
-                    # All data processing done.
-                    m.next = "closed"
-        # END of connection-state FSM
-
-        with m.FSM(name="read"):
-            bus = self.bus.upstream
-            with m.State("read-stream"):
-                m.next = "read-stream"
-                m.d.comb += bus.ready.eq(1)
-                with m.If(bus.valid):
-                    m.d.sync += stream.eq(bus.payload)
-                    # Zero the flags, so we don't get a false start/end
-                    m.d.sync += read_flags.eq(0)
-                    m.next = "read-len"
-            with m.State("read-len"):
-                m.next = "read-len"
-                m.d.comb += bus.ready.eq(1)
-                with m.If(bus.valid):
-                    m.d.sync += read_len.eq(bus.payload)
-                    m.next = "read-flags"
-            with m.State("read-flags"):
-                m.next = "read-flags"
-                m.d.comb += bus.ready.eq(1)
-                with m.If(bus.valid):
-                    # At the cycle edge, capture the flags byte...
-                    m.d.sync += read_flags.bytes.eq(bus.payload)
-                    with m.If(stream == Const(self._stream_id)):
-                        # maybe block until accepted.
-                        # TODO: This introduces an extra cycle of delay
-                        # when we're "already connected",
-                        # but keeps the logic blocks simpler.
-                        m.next = "await-accept"
-                    with m.Else():
-                        # If this isn't for our stream, proceed to read
-                        # (and discard)
-                        m.d.comb += input_limiter.count.eq(read_len)
-                        m.d.comb += input_limiter.start.eq(1)
-                        m.next = "read-body"
-            with m.State("await-accept"):
-                m.next = "await-accept"
-                with m.If(self.connected):
-                    # trigger the input-limiter to begin starting with
-                    # the byte following that.
-                    m.d.comb += input_limiter.count.eq(read_len)
-                    m.d.comb += input_limiter.start.eq(1)
-                    m.next = "read-body"
-            with m.State("read-body"):
-                m.next = "read-body"
-                connect(m, self.bus.upstream, input_limiter.inbound)
-                with m.If(stream != Const(self._stream_id)):
-                    # Disconnect from the input buffer, just discard the data:
-                    m.d.comb += [
-                        input_buffer.w_stream.valid.eq(0),
-                        input_limiter.outbound.ready.eq(1),
-                    ]
-                m.d.comb += input_limiter.start.eq(0)
-                with m.If(input_limiter.done):
-                    # Clear the input from the last packet, so we don't
-                    # think that we have one pending until we read it again.
-                    m.d.sync += [read_len.eq(0), stream.eq(self._stream_id+1)]
-                    m.next = "read-stream"
-
-        # Cases in which we want to send a packet:
-        data_to_send = output_buffer.r_level > 0
-        not_yet_started = self.connected & ~sent_start
-        not_yet_ended = (self.connected &
-                         ~self.stop.outbound.active & ~sent_end)
-        with m.FSM(name="write"):
-            bus = self.bus.downstream
-            write_len = Signal(8)
-
-            with m.State("write-stream"):
-                m.next = "write-stream"
-
-                with m.If(data_to_send | not_yet_started | not_yet_ended):
-                    # We're ready to start sending...
-                    m.d.comb += bus.payload.eq(self._stream_id)
-                    m.d.comb += bus.valid.eq(1)
-                    # Lock in the level as the length of this packet.
-                    # We may send a short (zero-length) packet
-                    # to start or end the connection.
-                    m.d.sync += write_len.eq(output_buffer.r_level)
-                    with m.If(bus.ready):
-                        # Only transition if we are ready-to-send.
-                        m.next = "write-len"
-                with m.Else():
-                    m.d.comb += bus.valid.eq(0)
-            with m.State("write-len"):
-                m.next = "write-len"
-                # Write the length.
-                m.d.comb += bus.payload.eq(write_len)
-                m.d.comb += bus.valid.eq(1)
-                with m.If(bus.ready):
-                    m.next = "write-flags"
-            with m.State("write-flags"):
-                m.next = "write-flags"
-                # Send the "end" bit if:
-                # - we haven't yet sent one,
-                # - the server has closed the connection, and
-                # - we have sent all the data from the server
-                # This generates an extra empty "end" packet-
-                # noisy, but correct.
-                send_end = not_yet_ended & (output_buffer.r_level == 0)
-
-                m.d.comb += [
-                    send_flags.flags.start.eq(~sent_start),
-                    send_flags.flags.end.eq(send_end),
-                    bus.payload.eq(send_flags.bytes),
-                    bus.valid.eq(1),
-                ]
-                m.d.comb += [
-                    output_limiter.count.eq(write_len),
-                    output_limiter.start.eq(1),
-                ]
-                with m.If(bus.ready):
-                    m.d.sync += [
-                        sent_start.eq(1),
-                        sent_end.eq(send_end),
-                    ]
-                    m.next = "write-body"
-            with m.State("write-body"):
-                m.next = "write-body"
-                connect(m, output_limiter.outbound, bus)
-                with m.If(output_limiter.done):
-                    m.next = "write-stream"
         return m
