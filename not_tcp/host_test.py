@@ -1,17 +1,17 @@
-import sys
-import pytest
 import asyncio
-from ntcp_http import NtcpHttpServer
+import pytest
 
 from amaranth import Module
 from amaranth.lib.wiring import Component, In, Out
 from amaranth.lib import stream
 
 from host_sim import HostSimulator
-from not_tcp.host import Packet, Flag
-from sim_server import SimServer
-from not_tcp.not_tcp import StreamStop
 from http_server import capitalizer
+from not_tcp.host import Packet, Flag
+from not_tcp.not_tcp import StreamStop
+from ntcp_http import NtcpHttpServer
+from sim_server import SimServer
+
 
 pytest_plugins = ('pytest_asyncio',)
 
@@ -65,12 +65,10 @@ def DISABLED_test_capitalize_server():
         received_bytes = bytes()
         received_body = bytes()
         packets = []
-        import sys
         for i in range(100):
             received_bytes += srv.recv()
             (packet, remainder) = Packet.from_bytes(received_bytes)
             if packet is not None:
-                sys.stderr.write(f"{packet}\n")
                 received_bytes = remainder
                 packets += [packet]
                 received_body += packet.body
@@ -88,7 +86,6 @@ def DISABLED_test_capitalize_server():
             received_bytes += srv.recv()
             (packet, remainder) = Packet.from_bytes(received_bytes)
             if packet is not None:
-                sys.stderr.write(f"{packet}\n")
                 received_bytes = remainder
                 packets += [packet]
                 received_body += packet.body
