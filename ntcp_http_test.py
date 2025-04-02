@@ -52,13 +52,11 @@ def test_sim():
 
         received_bytes = bytes()
         packets = []
-        import sys
         # We shouldn't have more than 100 packets for this test.
         for i in range(100):
             received_bytes += srv.recv()
             (packet, remainder) = Packet.from_bytes(received_bytes)
             if packet is not None:
-                sys.stderr.write(f"packet: {packet}\n")
                 received_bytes = remainder
                 packets += [packet]
                 if packet.end:
