@@ -10,7 +10,7 @@ from hypothesis.errors import InvalidArgument
 
 def run_fuzz_http_request(method, path, headers, body): 
     """
-    Same test as in simple_http_fuzz_test, but for manually re-running examples.
+    Same test as in simple_http_fuzz_test, but for manually re-running failures.
     """
     dut = SimpleLedHttp()
     sim = Simulator(dut)
@@ -48,4 +48,4 @@ def run_fuzz_http_request(method, path, headers, body):
     assert len(collector) != 0
 
 def test_simple_get():
-    run_fuzz_http_request("POST", "/led", {}, "") 
+    run_fuzz_http_request("POST", "/led", {}, "")

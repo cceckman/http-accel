@@ -94,7 +94,7 @@ class SimpleLedHttp(Component):
                 parser_demux.select.eq(HTTP_PARSER_SINK),
                 ok_printer.en.eq(1),
                 count_body.inc_ok.eq(1),
-                ]
+        ]
 
         not_found_response = "\r\n".join(
                 ["HTTP/1.0 404 Not Found",
@@ -111,7 +111,7 @@ class SimpleLedHttp(Component):
                 parser_demux.select.eq(HTTP_PARSER_SINK),
                 not_found_printer.en.eq(1),
                 count_body.inc_error.eq(1),
-                ]
+        ]
 
         not_allowed_response = "\r\n".join(
                 ["HTTP/1.0 405 Method Not Allowed",
@@ -128,7 +128,7 @@ class SimpleLedHttp(Component):
                 parser_demux.select.eq(HTTP_PARSER_SINK),
                 not_allowed_printer.en.eq(1),
                 count_body.inc_error.eq(1),
-                ]
+        ]
 
         teapot_response = "\r\n".join(
                 ["HTTP/1.0 418 I'm a teapot",
@@ -145,7 +145,7 @@ class SimpleLedHttp(Component):
                 parser_demux.select.eq(HTTP_PARSER_SINK),
                 teapot_printer.en.eq(1),
                 count_body.inc_error.eq(1),
-                ]
+        ]
         
         RESPONSE_COUNT = 4
         connect(m, count_body.output, response_mux.input[RESPONSE_COUNT])
@@ -153,7 +153,7 @@ class SimpleLedHttp(Component):
                 response_mux.select.eq(RESPONSE_COUNT),
                 parser_demux.select.eq(HTTP_PARSER_SINK),
                 count_body.en.eq(1),
-                ]
+        ]
 
         # Response to send if something went wrong
         bad_response = "\r\n".join(
@@ -171,7 +171,7 @@ class SimpleLedHttp(Component):
                 parser_demux.select.eq(HTTP_PARSER_SINK),
                 bad_printer.en.eq(1),
                 count_body.inc_error.eq(1),
-                ]
+        ]
 
         TIMEOUT_CYCLES=1023
         import math
@@ -191,24 +191,24 @@ class SimpleLedHttp(Component):
                 m.d.comb += [
                         start_matcher.reset.eq(1),
                         skip_headers.reset.eq(1),
-                        ]
+                ]
                 m.next = "idle"
             with m.State("idle"):
                 m.d.comb += [
                         start_matcher.reset.eq(0),
                         skip_headers.reset.eq(0),
-                        ]
+                ]
                 m.d.sync += [
                         parser_demux.select.eq(HTTP_PARSER_START),
                         response_mux.select.eq(RESPONSE_OK),
-                        ]
+                ]
                 m.next = "idle"
                 with m.If(self.session.inbound.active):
                     m.next = "parsing_start"
                     m.d.sync += [
                             self.session.outbound.active.eq(1),
                             count_body.inc_requests.eq(1),
-                            ]
+                    ]
             with m.State("parsing_start"):
                 m.next = "parsing_start"
                 m.d.sync += count_body.inc_requests.eq(0)
