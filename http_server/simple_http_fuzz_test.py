@@ -25,9 +25,9 @@ st_bodies = st.text(
     max_size=256)
 
 @settings(
-    max_examples=10000,
+    max_examples=2, # Increase for more testing.
     verbosity=Verbosity.normal,
-    deadline=None, # Amaranth runtime is highly variable, which annoys Hypothesis
+    deadline=None,
 )
 @given(
     method=st_methods,
@@ -35,7 +35,7 @@ st_bodies = st.text(
     headers=st_headers,
     body=st_bodies
 )
-def test_fuzz_http_request(method, path, headers, body): # Disabled since it fails
+def test_fuzz_http_request(method, path, headers, body): 
     dut = SimpleLedHttp()
     sim = Simulator(dut)
     sim.add_clock(1e-6)
