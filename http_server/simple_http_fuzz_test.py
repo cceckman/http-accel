@@ -68,5 +68,6 @@ def test_fuzz_http_request(method, path, headers, body):
     sim.run_until(0.01)
 
     # All we're really checking is that every packet gets _some_ kind of response.
-    sys.stderr.write(f"Got resonse {collector.body}")
+    sys.stderr.write(f"Got response {collector.body}")
+
     assert len(collector) != 0
