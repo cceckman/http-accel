@@ -1,8 +1,12 @@
 
+import logging
 import asyncio
 
 from sim_server import SimServer
 from not_tcp.host import StreamProxy
+
+
+log = logging.getLogger(__name__)
 
 
 class HostSimulator(SimServer, StreamProxy):
@@ -12,7 +16,6 @@ class HostSimulator(SimServer, StreamProxy):
 
 
 async def run_server(port):
-    import sys
     import ntcp_http
     dut = ntcp_http.NtcpHttpServer()
 
@@ -20,7 +23,7 @@ async def run_server(port):
         server = await asyncio.start_server(
             client_connected_cb=srv.client_connected, host="localhost",
             port=port)
-        sys.stderr.write(f"listening on port {port}\n")
+        log.info(f"listening on port {port}\n")
         await server.serve_forever()
 
 

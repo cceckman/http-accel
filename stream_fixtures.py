@@ -1,11 +1,13 @@
 """
 Test fixtures for sending and receiving in streams.
 """
-import sys
-import time
 import random
 import queue
+import logging
 from typing import Iterable
+
+
+log = logging.getLogger(__name__)
 
 __all__ = ["StreamCollector", "StreamSender"]
 
@@ -99,15 +101,10 @@ class StreamCollector:
                     try:
                         q.put(batch, block=False)
                     except queue.Full:
-                        sys.stderr.write(
-                            f"queue full, saving {len(batch)} bytes "
-                            "for later\n"
-                        )
                         countup = 0
                         continue
                     except Exception as e:
-                        sys.stderr.write(
-                            f"error in sending data from sim: {e}\n")
+                        log.error("error in sending data from sim: ", e)
                         return
                     batch = bytes()
                     countup = 0
@@ -149,7 +146,6 @@ class StreamSender:
 
     # Flag bit, to kill the send_queue_active thread
     die: bool = False
-
 
     def __init__(self,
                  stream,
@@ -199,10 +195,11 @@ class StreamSender:
                 except queue.Empty:
                     data = bytes()
                 except queue.ShutDown:
-                    sys.stderr.write("queue is shut down\n")
+                    log.info("write-to-sim queue is shut down")
                     return
                 except Exception as e:
-                    sys.stderr.write(f"unexpected exception: {e}\n")
+                    log.error(
+                        "write-to-sim queue unexpected exception: ", e)
                     raise e
 
                 if isinstance(data, str):

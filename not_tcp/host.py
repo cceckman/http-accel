@@ -1,10 +1,12 @@
+from asyncio import StreamReader, StreamWriter
 from dataclasses import dataclass
-import struct
 from enum import IntFlag
 from typing import Optional
-from asyncio import StreamReader, StreamWriter
 import asyncio
-import sys
+import logging
+import struct
+
+log = logging.getLogger(__name__)
 
 
 class Flag(IntFlag):
@@ -104,6 +106,7 @@ class Packet:
 # Use as superclass; subclass to simulator or real
 class StreamProxy:
     lock = asyncio.Lock()
+    request_number = 0
 
     def send(self, b: bytes()):
         # Must be implemented by subclass
@@ -115,14 +118,19 @@ class StreamProxy:
 
     def client_connected(
             self, reader: StreamReader, writer: StreamWriter):
-        asyncio.create_task(self.client_loop(reader, writer))
+        r = self.request_number = self.request_number + 1
+        log.info(f'client {r} connected')
+        asyncio.create_task(self.client_loop(r, reader, writer))
 
-    async def client_loop(self, reader: StreamReader, writer: StreamWriter):
+    async def client_loop(self, number: int,
+                          reader: StreamReader, writer: StreamWriter):
         async with self.lock, asyncio.TaskGroup() as tg:
-            tg.create_task(self.run_inbound(reader))
-            tg.create_task(self.run_outbound(writer))
+            log.info(f'starting client {number} handler')
+            tg.create_task(self.run_inbound(number, reader))
+            tg.create_task(self.run_outbound(number, writer))
+        log.info(f'completed client {number} handlers')
 
-    async def run_inbound(self, reader: StreamReader):
+    async def run_inbound(self, number: int, reader: StreamReader):
         p1 = Packet(flags=Flag.START, stream_id=1, body=bytes())
         self.send(p1.to_bytes())
         want_bytes = 256
@@ -145,15 +153,23 @@ class StreamProxy:
         # Input is done, in theory
         p3 = Packet(flags=Flag.END, stream_id=1, body=bytes())
         self.send(p3.to_bytes())
+        log.info(f"client {number} closed inbound connection")
 
-    async def run_outbound(self, writer: StreamWriter):
+    async def run_outbound(self, number: int, writer: StreamWriter):
+        olog = log.getChild("outbound")
+        total_bytes = 0
         buffer = bytes()
         packet_count = 0
         while True:
-            rcvd = self.recv()  # Has its own timeout, but isn't async. So:
-            await asyncio.sleep(0)
-            buffer += rcvd
-            (p, rem) = Packet.from_bytes(buffer)
+            if len(buffer) > 0:
+                olog.debug(
+                    f"buffer contains bytes: "
+                    f"{total_bytes}:{total_bytes+len(buffer)}\n")
+
+            buffer_len = len(buffer)
+            (p, buffer) = Packet.from_bytes(buffer)
+            consumed = (buffer_len - len(buffer))
+            total_bytes += consumed
             if p is None:
                 continue
             buffer = rem
