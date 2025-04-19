@@ -1,4 +1,4 @@
-from amaranth import Module
+from amaranth import Module, Signal
 from amaranth.lib.wiring import In, Out, Component, connect
 
 from .count_body import CountBody
@@ -23,6 +23,9 @@ class SimpleLedHttp(Component):
 
     A GET from /count will return the number of requests and
     responses.
+
+    If there's no activity for 1024 cycles, will assume something
+    went wrong.
 
     Attributes
     ----------
@@ -72,7 +75,7 @@ class SimpleLedHttp(Component):
         m.d.comb += parser_demux.outs[HTTP_PARSER_SINK].ready.eq(1)
 
         ## Responders
-        response_mux = m.submodules.response_mux = StreamMux(mux_width=5, stream_width=8)
+        response_mux = m.submodules.response_mux = StreamMux(mux_width=6, stream_width=8)
         connect(m, response_mux.out, self.session.outbound.data)
         count_body = m.submodules.count_body = CountBody()
 
@@ -143,7 +146,7 @@ class SimpleLedHttp(Component):
                 teapot_printer.en.eq(1),
                 count_body.inc_error.eq(1),
         ]
-
+        
         RESPONSE_COUNT = 4
         connect(m, count_body.output, response_mux.input[RESPONSE_COUNT])
         send_count = [
@@ -152,39 +155,75 @@ class SimpleLedHttp(Component):
                 count_body.en.eq(1),
         ]
 
+        # Response to send if something went wrong
+        bad_response = "\r\n".join(
+                ["HTTP/1.0 500 Internal Server Error",
+                    "Host: Fomu",
+                    "Content-Type: text/plain; charset=utf-8",
+                    "",
+                    "uh-oh"]) + "\r\n"
+        bad_response = bad_response.encode("utf-8")
+        bad_printer = m.submodules.bad_printer = Printer(bad_response)
+        RESPONSE_BAD = 5
+        connect(m, bad_printer.output, response_mux.input[RESPONSE_BAD])
+        send_bad = [
+                response_mux.select.eq(RESPONSE_BAD),
+                parser_demux.select.eq(HTTP_PARSER_SINK),
+                bad_printer.en.eq(1),
+                count_body.inc_error.eq(1),
+        ]
+
+        TIMEOUT_CYCLES=1023
+        import math
+        timeout_count = Signal(math.ceil(math.log2(TIMEOUT_CYCLES)))
+        timeout = Signal(1)
+        active = Signal(1)
+        m.d.comb += active.eq( (self.session.inbound.data.valid & self.session.inbound.data.ready)
+                              |(self.session.outbound.data.valid))
+        with m.If(active | timeout):
+            m.d.sync += timeout_count.eq(0)
+        with m.Elif(timeout_count < TIMEOUT_CYCLES):
+            m.d.sync += timeout_count.eq(timeout_count + 1)
+        m.d.comb += timeout.eq(timeout_count >= TIMEOUT_CYCLES)
+
         with m.FSM():
             with m.State("reset"):
                 m.d.comb += [
-                    start_matcher.reset.eq(1),
-                    skip_headers.reset.eq(1),
+                        start_matcher.reset.eq(1),
+                        skip_headers.reset.eq(1),
                 ]
                 m.next = "idle"
             with m.State("idle"):
                 m.d.comb += [
-                    start_matcher.reset.eq(0),
-                    skip_headers.reset.eq(0),
+                        start_matcher.reset.eq(0),
+                        skip_headers.reset.eq(0),
                 ]
                 m.d.sync += [
-                    parser_demux.select.eq(HTTP_PARSER_START),
-                    response_mux.select.eq(RESPONSE_OK),
+                        parser_demux.select.eq(HTTP_PARSER_START),
+                        response_mux.select.eq(RESPONSE_OK),
                 ]
                 m.next = "idle"
                 with m.If(self.session.inbound.active):
                     m.next = "parsing_start"
                     m.d.sync += [
-                        self.session.outbound.active.eq(1),
-                        count_body.inc_requests.eq(1),
+                            self.session.outbound.active.eq(1),
+                            count_body.inc_requests.eq(1),
                     ]
             with m.State("parsing_start"):
                 m.next = "parsing_start"
                 m.d.sync += count_body.inc_requests.eq(0)
-                # start line matched successfully
-                with m.If(start_matcher.done):
+                with m.If(timeout):
+                    m.next = "writing"
+                    m.d.sync += send_bad
+                with m.Elif(start_matcher.done):
                     m.next = "parsing_header"
                     m.d.sync += parser_demux.select.eq(HTTP_PARSER_HEADERS)
             with m.State("parsing_header"):
                 m.next = "parsing_header"
-                with m.If(skip_headers.accepted):
+                with m.If(timeout):
+                    m.next = "writing"
+                    m.d.sync += send_bad
+                with m.Elif(skip_headers.accepted):
                     with m.If(start_matcher.path[MATCHED_LED_PATH]):
                         with m.If(start_matcher.method[start_matcher.METHOD_POST]):
                             m.next = "parsing_led_body"
@@ -200,8 +239,8 @@ class SimpleLedHttp(Component):
                             m.next = "writing"
                             m.d.sync += send_405
                     with m.Elif(start_matcher.path[MATCHED_COFFEE_PATH]):
-                        with m.If(start_matcher.method[start_matcher.METHOD_GET] 
-                                  | start_matcher.method[start_matcher.METHOD_BREW]): 
+                        with m.If(start_matcher.method[start_matcher.METHOD_GET]
+                                | start_matcher.method[start_matcher.METHOD_BREW]):
                             m.next = "writing"
                             m.d.sync += send_teapot
                         with m.Else():
@@ -212,25 +251,24 @@ class SimpleLedHttp(Component):
                         m.d.sync += send_404
                 with m.Elif(~self.session.inbound.active):
                     m.next = "writing"
-                    # TODO: #4 - Should send a different error code besides 404 if the
-                    #            headers fail to parse before end-of-session.
                     m.d.sync += send_404
             with m.State("parsing_led_body"): # TODO: #4 - Make body parsing state more generic.
                 m.next = "parsing_led_body"
-                with m.If(led_body_handler.accepted):
+                with m.If(timeout):
+                    m.next = "writing"
+                    m.d.sync += send_bad
+                with m.Elif(led_body_handler.accepted):
                     m.next = "writing"
                     m.d.sync += send_ok
                 with m.Elif(led_body_handler.rejected):
                     m.next = "writing"
-                    # TODO: #4 - Should send a different error code besides 404 if the
-                    #            body fails to parse before end-of-session.
                     m.d.sync += send_404
             with m.State("writing_count_ok"):
                 m.next = "writing_count_ok"
                 m.d.sync += [
-                    ok_printer.en.eq(0),
-                    count_body.inc_ok.eq(0)
-                ]
+                        ok_printer.en.eq(0),
+                        count_body.inc_ok.eq(0)
+                        ]
                 with m.If(ok_printer.done):
                     m.d.sync += send_count
                     m.next = "writing"
@@ -241,16 +279,18 @@ class SimpleLedHttp(Component):
                         not_found_printer.en.eq(0),
                         not_allowed_printer.en.eq(0),
                         teapot_printer.en.eq(0),
+                        bad_printer.en.eq(0),
                         count_body.en.eq(0),
                         self.session.outbound.active.eq(1),
                         count_body.inc_ok.eq(0),
                         count_body.inc_error.eq(0),
-                ]
+                        ]
                 with m.If(  ((response_mux.select == RESPONSE_OK) & ok_printer.done)
-                          | ((response_mux.select == RESPONSE_404) & not_found_printer.done)
-                          | ((response_mux.select == RESPONSE_405) & not_allowed_printer.done)
-                          | ((response_mux.select == RESPONSE_COUNT) & count_body.done)
-                          | ((response_mux.select == RESPONSE_TEAPOT) & teapot_printer.done)):
+                        | ((response_mux.select == RESPONSE_404) & not_found_printer.done)
+                        | ((response_mux.select == RESPONSE_405) & not_allowed_printer.done)
+                        | ((response_mux.select == RESPONSE_COUNT) & count_body.done)
+                        | ((response_mux.select == RESPONSE_TEAPOT) & teapot_printer.done)
+                        | ((response_mux.select == RESPONSE_BAD) & bad_printer.done)):
                     m.d.sync += self.session.outbound.active.eq(0)
                     # Can finish writing before all the input is collected,
                     # since a bad request migh trigger an early 404. Wait
