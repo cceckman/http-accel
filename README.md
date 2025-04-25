@@ -9,10 +9,13 @@ cat extras/99-fomu.rules | sudo tee /etc/udev/rules.d/99-fomu.rules
 cat extras/fomu-serial.conf | sudo tee /etc/tlp.d/fomu-serial.conf
 ```
 
+Make sure you're part of the `dialout` group.
+
 Then try:
 
 ```
 . ./enter.sh
-python usb_serial.py
+python3 ./fomu_http_accel.py    # Load onto the device
+python3 ./serial_server.py      # Run the host-side proxy
 ```
 

@@ -157,12 +157,14 @@ class SimpleLedHttp(Component):
                 m.d.comb += [
                     start_matcher.reset.eq(1),
                     skip_headers.reset.eq(1),
+                    led_body_handler.reset.eq(1)
                 ]
                 m.next = "idle"
             with m.State("idle"):
                 m.d.comb += [
                     start_matcher.reset.eq(0),
                     skip_headers.reset.eq(0),
+                    led_body_handler.reset.eq(0)
                 ]
                 m.d.sync += [
                     parser_demux.select.eq(HTTP_PARSER_START),
