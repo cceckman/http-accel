@@ -1,6 +1,7 @@
 from amaranth import Module, Signal, Array, Const
 from amaranth.lib.wiring import In, Out, Component
 from amaranth.lib import stream
+from http_server.capitalizer import Capitalizer
 
 class SimpleLedBody(Component):
     """
@@ -53,22 +54,29 @@ class SimpleLedBody(Component):
     def elaborate(self, _platform):
         m = Module()
 
+        caps = m.submodules.caps = Capitalizer()
+        m.d.comb += [
+            caps.input.eq(self.input.payload),
+        ]
+
+
+
         hex_numeric = Signal(1)
-        m.d.comb += hex_numeric.eq(  (self.input.payload >= ord('0')) 
-                                   & (self.input.payload <= ord('9')))
+        m.d.comb += hex_numeric.eq(  (caps.output >= ord('0')) 
+                                   & (caps.output <= ord('9')))
 
         hex_alpha = Signal(1)
-        m.d.comb += hex_alpha.eq(  (self.input.payload >= ord('A'))
-                                 & (self.input.payload <= ord('F')))
+        m.d.comb += hex_alpha.eq(  (caps.output >= ord('A'))
+                                 & (caps.output <= ord('F')))
 
         valid_hex = Signal(1)
         m.d.comb += valid_hex.eq(hex_numeric | hex_alpha)
 
         hex_atoi = Signal(4)
         with m.If(hex_numeric):
-            m.d.comb += hex_atoi.eq(self.input.payload - ord('0'))
+            m.d.comb += hex_atoi.eq(caps.output - ord('0'))
         with m.Elif(hex_alpha):
-            m.d.comb += hex_atoi.eq(self.input.payload - ord('A') + 0xA)
+            m.d.comb += hex_atoi.eq(caps.output - ord('A') + 0xA)
         with m.Else():
             m.d.comb += hex_atoi.eq(0)
 
@@ -98,10 +106,10 @@ class SimpleLedBody(Component):
                             m.d.sync += digit[0:4].eq(hex_atoi)
                         with m.Else():
                             m.d.sync += digit[4:8].eq(hex_atoi)
-                    with m.Elif((idx == 6) & (self.input.payload == ord('\r'))):
+                    with m.Elif((idx == 6) & (caps.output == ord('\r'))):
                         m.d.sync += idx.eq(7)
                         m.next = "matching"
-                    with m.Elif((idx == 7) & (self.input.payload == ord('\n'))):
+                    with m.Elif((idx == 7) & (caps.output == ord('\n'))):
                         m.next = "matched"
                     with m.Else():
                         m.next = "error"
